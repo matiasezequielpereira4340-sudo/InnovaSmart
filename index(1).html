@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Innovasmart — Importaciones & Mercado Libre</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #E8C96A;
+    --gold-dim: rgba(201,168,76,0.15);
+    --black: #0A0A0A;
+    --surface: #111111;
+    --surface2: #181818;
+    --border: rgba(201,168,76,0.2);
+    --text: #F0EDE6;
+    --muted: #888880;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--black); color: var(--text); font-family: 'DM Sans', sans-serif; overflow-x: hidden; cursor: none; }
+
+  .cursor { width: 10px; height: 10px; background: var(--gold); border-radius: 50%; position: fixed; pointer-events: none; z-index: 9999; transition: transform 0.15s ease; transform: translate(-50%, -50%); }
+  .cursor-ring { width: 36px; height: 36px; border: 1px solid rgba(201,168,76,0.5); border-radius: 50%; position: fixed; pointer-events: none; z-index: 9998; transition: transform 0.35s ease, width 0.3s, height 0.3s; transform: translate(-50%, -50%); }
+
+  /* NAV */
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; padding: 20px 5%; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(to bottom, rgba(10,10,10,0.95), transparent); backdrop-filter: blur(6px); }
+  .nav-logo { display: flex; align-items: center; gap: 10px; font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; color: var(--gold); text-decoration: none; }
+  .nav-logo img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+  .nav-links { display: flex; gap: 36px; list-style: none; }
+  .nav-links a { color: var(--muted); text-decoration: none; font-size: 0.88rem; letter-spacing: 0.08em; text-transform: uppercase; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--gold); }
+  .nav-cta { background: var(--gold); color: var(--black); padding: 10px 22px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; text-decoration: none; letter-spacing: 0.04em; transition: background 0.2s, transform 0.2s; }
+  .nav-cta:hover { background: var(--gold-light); transform: translateY(-1px); }
+
+  /* HERO */
+  #hero { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; align-items: center; position: relative; padding: 120px 5% 80px; overflow: hidden; gap: 60px; }
+  .hero-bg { position: absolute; inset: 0; background: radial-gradient(ellipse 60% 60% at 80% 50%, rgba(201,168,76,0.07) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 10% 80%, rgba(201,168,76,0.04) 0%, transparent 60%); }
+  .hero-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(201,168,76,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(201,168,76,0.04) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 0%, transparent 100%); }
+  .hero-content { position: relative; z-index: 2; }
+  .hero-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 0.78rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin-bottom: 28px; opacity: 0; animation: fadeUp 0.8s 0.2s forwards; }
+  .hero-eyebrow::before { content: ''; display: block; width: 32px; height: 1px; background: var(--gold); }
+  h1 { font-family: 'Playfair Display', serif; font-size: clamp(2.2rem, 4vw, 4rem); font-weight: 900; line-height: 1.08; margin-bottom: 28px; opacity: 0; animation: fadeUp 0.8s 0.4s forwards; }
+  h1 em { font-style: normal; color: var(--gold); }
+  .hero-sub { font-size: 1rem; color: var(--muted); line-height: 1.7; margin-bottom: 48px; font-weight: 300; opacity: 0; animation: fadeUp 0.8s 0.6s forwards; }
+  .hero-actions { display: flex; gap: 16px; flex-wrap: wrap; opacity: 0; animation: fadeUp 0.8s 0.8s forwards; }
+
+  /* HERO PHOTO */
+  .hero-photo-wrap { position: relative; z-index: 2; display: flex; justify-content: center; align-items: flex-end; opacity: 0; animation: fadeLeft 0.9s 0.5s forwards; }
+  .hero-photo-frame { position: relative; }
+  .hero-photo-frame::before { content: ''; position: absolute; inset: -2px; border-radius: 12px 12px 0 0; background: linear-gradient(135deg, var(--gold), transparent 60%); z-index: -1; }
+  .hero-photo { width: 100%; max-width: 420px; border-radius: 12px 12px 0 0; object-fit: cover; display: block; filter: grayscale(15%) contrast(1.05); }
+  .hero-photo-badge { position: absolute; bottom: 24px; left: -20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; }
+  .hero-photo-badge .num { font-family: 'Playfair Display', serif; font-size: 1.8rem; color: var(--gold); font-weight: 700; line-height: 1; }
+  .hero-photo-badge .label { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  .btn-primary { background: var(--gold); color: var(--black); padding: 16px 34px; border-radius: 4px; font-weight: 600; font-size: 0.95rem; text-decoration: none; letter-spacing: 0.03em; transition: all 0.25s; display: inline-flex; align-items: center; gap: 8px; }
+  .btn-primary:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(201,168,76,0.25); }
+  .btn-ghost { border: 1px solid var(--border); color: var(--text); padding: 16px 34px; border-radius: 4px; font-weight: 400; font-size: 0.95rem; text-decoration: none; letter-spacing: 0.03em; transition: all 0.25s; }
+  .btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+  /* SECTION BASE */
+  section { padding: 100px 5%; }
+  .section-label { font-size: 0.75rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--gold); margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .section-label::before { content: ''; display: block; width: 24px; height: 1px; background: var(--gold); }
+  h2 { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; line-height: 1.15; margin-bottom: 16px; }
+  h2 span { color: var(--gold); }
+  .section-intro { color: var(--muted); font-size: 1rem; line-height: 1.7; max-width: 520px; margin-bottom: 64px; font-weight: 300; }
+
+  /* VIDEOS */
+  #videos { background: var(--surface); }
+  .videos-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .video-wrap { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--black); }
+  .video-label { font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .video-label::before { content: ''; display: block; width: 16px; height: 1px; background: var(--gold); }
+  .video-title { font-size: 1rem; font-weight: 500; margin-bottom: 16px; }
+  .yt-container { position: relative; padding-bottom: 177.77%; height: 0; overflow: hidden; border-radius: 8px; }
+  .yt-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+  .tiktok-container { display: flex; justify-content: center; }
+  .tiktok-container blockquote { max-width: 100% !important; min-width: unset !important; }
+
+  /* SERVICIOS */
+  #servicios { background: var(--black); }
+  .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2px; }
+  .service-card { background: var(--surface); padding: 40px 36px; position: relative; overflow: hidden; transition: transform 0.3s; cursor: none; }
+  .service-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--gold); transform: scaleX(0); transform-origin: left; transition: transform 0.4s ease; }
+  .service-card:hover { transform: translateY(-4px); }
+  .service-card:hover::before { transform: scaleX(1); }
+  .service-icon { font-size: 2rem; margin-bottom: 20px; display: block; }
+  .service-card h3 { font-family: 'Playfair Display', serif; font-size: 1.3rem; margin-bottom: 12px; }
+  .service-card p { color: var(--muted); font-size: 0.9rem; line-height: 1.65; margin-bottom: 24px; }
+  .service-price { font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); font-weight: 600; border-top: 1px solid var(--border); padding-top: 20px; display: flex; align-items: baseline; gap: 6px; }
+  .price-num { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: var(--text); }
+  .service-badge { position: absolute; top: 16px; right: 16px; background: var(--gold); color: var(--black); font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 10px; border-radius: 2px; font-weight: 700; }
+  .service-link { display: inline-flex; align-items: center; gap: 6px; color: var(--gold); font-size: 0.85rem; text-decoration: none; margin-top: 20px; font-weight: 500; transition: gap 0.2s; }
+  .service-link:hover { gap: 10px; }
+
+  /* SOBRE MÍ */
+  #sobre-mi { background: var(--surface); }
+  .sobre-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 80px; align-items: center; }
+  .sobre-photo { width: 100%; border-radius: 8px; object-fit: cover; filter: grayscale(10%); border: 1px solid var(--border); }
+  .sobre-content .section-label { margin-bottom: 16px; }
+  .sobre-content h2 { margin-bottom: 24px; }
+  .sobre-content p { color: var(--muted); font-size: 1rem; line-height: 1.8; margin-bottom: 20px; font-weight: 300; }
+  .sobre-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 40px; }
+  .sobre-stat { border-left: 2px solid var(--gold); padding-left: 16px; }
+  .sobre-stat .num { font-family: 'Playfair Display', serif; font-size: 2rem; color: var(--gold); font-weight: 700; line-height: 1; }
+  .sobre-stat .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+  /* PROCESO */
+  #proceso { background: var(--black); }
+  .proceso-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+  .proceso-steps { display: flex; flex-direction: column; }
+  .step { display: flex; gap: 28px; padding: 32px 0; border-bottom: 1px solid var(--border); transition: all 0.3s; }
+  .step:first-child { border-top: 1px solid var(--border); }
+  .step-num { font-family: 'Playfair Display', serif; font-size: 3rem; font-weight: 700; color: rgba(201,168,76,0.15); line-height: 1; min-width: 60px; transition: color 0.3s; }
+  .step:hover .step-num { color: var(--gold); }
+  .step-content h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+  .step-content p { color: var(--muted); font-size: 0.9rem; line-height: 1.65; }
+  .proceso-visual { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 48px; position: relative; overflow: hidden; }
+  .proceso-visual::before { content: ''; position: absolute; top: -40px; right: -40px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(201,168,76,0.12), transparent 70%); }
+  .pv-label { font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin-bottom: 20px; }
+  .pv-quote { font-family: 'Playfair Display', serif; font-size: 1.5rem; line-height: 1.4; margin-bottom: 32px; }
+  .pv-features { display: flex; flex-direction: column; gap: 14px; }
+  .pv-feature { display: flex; align-items: center; gap: 12px; font-size: 0.9rem; color: var(--muted); }
+  .pv-feature::before { content: '✓'; color: var(--gold); font-weight: 700; width: 20px; text-align: center; flex-shrink: 0; }
+
+  /* TESTIMONIOS */
+  #testimonios { background: var(--surface); }
+  .testimonios-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+  .testi-card { background: var(--black); border: 1px solid var(--border); border-radius: 6px; padding: 36px; position: relative; transition: border-color 0.3s, transform 0.3s; }
+  .testi-card:hover { border-color: var(--gold); transform: translateY(-3px); }
+  .testi-stars { color: var(--gold); font-size: 0.9rem; margin-bottom: 20px; letter-spacing: 3px; }
+  .testi-text { font-size: 0.95rem; line-height: 1.7; color: var(--text); margin-bottom: 28px; font-style: italic; }
+  .testi-author { display: flex; align-items: center; gap: 12px; }
+  .testi-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--gold-dim); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--gold); font-weight: 700; }
+  .testi-name { font-weight: 600; font-size: 0.9rem; }
+  .testi-role { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+  .testi-result { position: absolute; top: 24px; right: 24px; background: var(--gold-dim); border: 1px solid var(--border); color: var(--gold); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 12px; border-radius: 2px; font-weight: 600; }
+
+  /* CTA */
+  #cta { background: var(--black); text-align: center; padding: 120px 5%; position: relative; overflow: hidden; }
+  #cta::before { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 600px; height: 600px; border-radius: 50%; background: radial-gradient(circle, rgba(201,168,76,0.06), transparent 70%); pointer-events: none; }
+  #cta h2 { max-width: 600px; margin: 0 auto 20px; }
+  #cta p { color: var(--muted); max-width: 460px; margin: 0 auto 48px; line-height: 1.7; }
+  .cta-actions { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+
+  /* FOOTER */
+  footer { background: var(--surface); border-top: 1px solid var(--border); padding: 40px 5%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
+  .footer-brand { font-family: 'Playfair Display', serif; font-size: 1.1rem; color: var(--gold); }
+  .footer-copy { color: var(--muted); font-size: 0.8rem; }
+  .footer-links { display: flex; gap: 24px; }
+  .footer-links a { color: var(--muted); font-size: 0.8rem; text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--gold); }
+
+  /* ANIMATIONS */
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeLeft { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* MOBILE */
+  @media (max-width: 900px) {
+    #hero { grid-template-columns: 1fr; padding-top: 100px; }
+    .hero-photo-wrap { display: none; }
+    .sobre-grid { grid-template-columns: 1fr; gap: 40px; }
+    .proceso-grid { grid-template-columns: 1fr; gap: 48px; }
+    .videos-grid { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+    body { cursor: auto; }
+    .cursor, .cursor-ring { display: none; }
+    .sobre-stats { grid-template-columns: repeat(3,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="#">
+    <img src="https://ezequielsantiago-star.github.io/Web-Innovasmart/img/logo-innovasmart.jpeg" alt="Innovasmart">
+    Innovasmart
+  </a>
+  <ul class="nav-links">
+    <li><a href="#servicios">Servicios</a></li>
+    <li><a href="#proceso">Proceso</a></li>
+    <li><a href="#testimonios">Resultados</a></li>
+    <li><a href="#videos">Videos</a></li>
+    <li><a href="#cta">Contacto</a></li>
+  </ul>
+  <a class="nav-cta" href="https://wa.me/5491160374306" target="_blank">Hablar ahora →</a>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">Asesoría de importaciones · Argentina</div>
+    <h1>El negocio que <em>nadie</em><br>te enseña en Argentina</h1>
+    <p class="hero-sub">Importá con margen, vendé con estructura y escalá sin caos. Un sistema completo: desde tu primera compra hasta Mercado Libre optimizado.</p>
+    <div class="hero-actions">
+      <a class="btn-primary" href="https://wa.me/5491160374306" target="_blank">Quiero empezar →</a>
+      <a class="btn-ghost" href="#servicios">Ver programas</a>
+    </div>
+  </div>
+  <div class="hero-photo-wrap">
+    <div class="hero-photo-frame">
+      <img class="hero-photo" src="ezequiel.png" alt="Matías Ezequiel Pereira — Fundador Innovasmart">
+      <div class="hero-photo-badge">
+        <div class="num">+200</div>
+        <div class="label">clientes asesorados</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOBRE MÍ -->
+<section id="sobre-mi">
+  <div class="sobre-grid reveal">
+    <img class="sobre-photo" src="ezequiel.png" alt="Matías Ezequiel Pereira">
+    <div class="sobre-content">
+      <div class="section-label">Quién soy</div>
+      <h2>Matías Ezequiel Pereira,<br><span>importador y mentor</span></h2>
+      <p>Empecé a importar desde cero, cometí los errores caros que nadie te cuenta y construí un sistema que funciona en el contexto argentino. Hoy ayudo a otros a saltarse esa curva de aprendizaje.</p>
+      <p>No vendo teoría de manual. Cada recomendación que hago la probé primero con mi propio dinero.</p>
+      <div class="sobre-stats">
+        <div class="sobre-stat"><div class="num">+200</div><div class="lbl">Clientes</div></div>
+        <div class="sobre-stat"><div class="num">4</div><div class="lbl">Programas</div></div>
+        <div class="sobre-stat"><div class="num">100%</div><div class="lbl">Orientado a resultados</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VIDEOS -->
+<section id="videos">
+  <div class="reveal">
+    <div class="section-label">Contenido</div>
+    <h2>Mirá cómo <span>pensamos el negocio</span></h2>
+    <p class="section-intro">Videos reales sobre importación, Mercado Libre y cómo construir un negocio con estructura en Argentina.</p>
+  </div>
+  <div class="videos-grid reveal">
+    <div>
+      <div class="video-label">YouTube</div>
+      <div class="video-title">Cómo empezar a importar</div>
+      <div class="yt-container">
+        <iframe src="https://www.youtube.com/embed/PY61vN7_NP8" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+      </div>
+    </div>
+    <div>
+      <div class="video-label">TikTok</div>
+      <div class="video-title">Tips de importación</div>
+      <div class="tiktok-container">
+        <blockquote class="tiktok-embed" cite="https://vt.tiktok.com/ZSu6b7J92/" data-video-id="" style="max-width: 100%; min-width: 280px;">
+          <section>
+            <a href="https://vt.tiktok.com/ZSu6b7J92/" target="_blank">Ver video en TikTok →</a>
+          </section>
+        </blockquote>
+        <script async src="https://www.tiktok.com/embed.js"></script>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICIOS -->
+<section id="servicios">
+  <div class="reveal">
+    <div class="section-label">Programas</div>
+    <h2>Elegí tu <span>nivel de entrada</span></h2>
+    <p class="section-intro">Desde la primera importación hasta la operación escalada. Cada nivel está diseñado para una etapa específica de tu negocio.</p>
+  </div>
+  <div class="services-grid reveal">
+
+    <div class="service-card">
+      <span class="service-icon">📦</span>
+      <h3>Guía Importador Inicial</h3>
+      <p>Paso a paso para tu primera importación. Guía completa, plantillas de costos y checklist para evitar los errores más caros.</p>
+      <div class="service-price"><span class="price-num">$49.000</span><span>pago único</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306" target="_blank">Quiero este nivel →</a>
+    </div>
+
+    <div class="service-card">
+      <span class="service-icon">🛒</span>
+      <h3>Ventas en Mercado Libre</h3>
+      <p>Publicaciones optimizadas, reputación y conversión. Vendé con estrategia y no a prueba y error.</p>
+      <div class="service-price"><span class="price-num">$89.000</span><span>pago único</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306" target="_blank">Quiero este nivel →</a>
+    </div>
+
+    <div class="service-card">
+      <span class="service-icon">🚀</span>
+      <h3>Full / Flex — Escala</h3>
+      <p>Fulfillment, logística avanzada y automatización. Para quienes ya venden y quieren crecer sin operar todo ellos mismos.</p>
+      <div class="service-price"><span class="price-num">$149.000</span><span>pago único</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306" target="_blank">Quiero este nivel →</a>
+    </div>
+
+    <div class="service-card">
+      <div class="service-badge">🔥 Premium</div>
+      <span class="service-icon">💎</span>
+      <h3>Mentoría 1 a 1 de Alto Impacto</h3>
+      <p>Diagnóstico personal + plan 30/60/90 días + acompañamiento directo. Para quienes van en serio y quieren resultados rápidos.</p>
+      <div class="service-price"><span class="price-num">$250.000</span><span>aplicación previa</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306" target="_blank">Aplicar ahora →</a>
+    </div>
+
+    <div class="service-card">
+      <span class="service-icon">📣</span>
+      <h3>Marketing Digital</h3>
+      <p>Gestión de redes sociales, publicidad paga (Meta Ads), creación de contenido y estrategia de marca. Generá clientes de forma predecible.</p>
+      <div class="service-price"><span style="font-size:1rem;color:var(--muted);font-family:'DM Sans'">Consultar precio →</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306?text=Hola%20Innovasmart%2C%20quiero%20info%20sobre%20Marketing%20Digital" target="_blank">Pedir información →</a>
+    </div>
+
+    <div class="service-card">
+      <span class="service-icon">🌐</span>
+      <h3>Desarrollo Web</h3>
+      <p>Sitios y landing pages rápidas, responsive y orientadas a conversión. Tu presencia online que vende mientras dormís.</p>
+      <div class="service-price"><span style="font-size:1rem;color:var(--muted);font-family:'DM Sans'">Consultar precio →</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306?text=Hola%20Innovasmart%2C%20quiero%20info%20sobre%20Desarrollo%20Web" target="_blank">Pedir presupuesto →</a>
+    </div>
+
+  </div>
+</section>
+
+<!-- PROCESO -->
+<section id="proceso">
+  <div class="proceso-grid">
+    <div>
+      <div class="reveal">
+        <div class="section-label">Metodología</div>
+        <h2>Simple, claro<br><span>y accionable</span></h2>
+        <p class="section-intro">Sin teoría de más. Cada paso tiene un objetivo concreto y una acción asociada.</p>
+      </div>
+      <div class="proceso-steps reveal">
+        <div class="step"><div class="step-num">01</div><div class="step-content"><h3>Diagnóstico</h3><p>Analizamos tu situación actual, tu capital disponible y tu objetivo real. Sin suposiciones.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-content"><h3>Plan a medida</h3><p>Armamos el camino: qué hacer primero, qué después, y qué evitar. Con fechas y métricas.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-content"><h3>Implementación</h3><p>Te acompañamos en la ejecución. No te dejamos solo con un PDF y suerte.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-content"><h3>Optimización</h3><p>Revisamos resultados y ajustamos. Un negocio real se optimiza constantemente.</p></div></div>
+      </div>
+    </div>
+    <div class="proceso-visual reveal">
+      <div class="pv-label">Por qué Innovasmart</div>
+      <div class="pv-quote">"No vendemos teoría.<br>Construimos negocios."</div>
+      <div class="pv-features">
+        <div class="pv-feature">Acompañamiento real en cada etapa, no solo material</div>
+        <div class="pv-feature">Metodología probada con más de 200 clientes</div>
+        <div class="pv-feature">Enfoque en margen, no solo en volumen</div>
+        <div class="pv-feature">Acceso directo al equipo vía WhatsApp</div>
+        <div class="pv-feature">Sin humo: solo lo que funciona en Argentina hoy</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIOS -->
+<section id="testimonios">
+  <div class="reveal">
+    <div class="section-label">Resultados reales</div>
+    <h2>Lo que dicen<br><span>quienes ya escalaron</span></h2>
+    <p class="section-intro">Resultados concretos de personas que empezaron desde cero o necesitaban orden en su operación.</p>
+  </div>
+  <div class="testimonios-grid reveal">
+    <div class="testi-card">
+      <div class="testi-result">+180% ventas</div>
+      <div class="testi-stars">★★★★★</div>
+      <p class="testi-text">"Antes importaba sin saber si ganaba o perdía plata. Con el plan de Matías en 60 días dupliqué mi margen y organicé toda la operación."</p>
+      <div class="testi-author"><div class="testi-avatar">M</div><div><div class="testi-name">Marcos R.</div><div class="testi-role">Importador · Buenos Aires</div></div></div>
+    </div>
+    <div class="testi-card">
+      <div class="testi-result">Primera importación</div>
+      <div class="testi-stars">★★★★★</div>
+      <p class="testi-text">"Pensé que importar era para empresas grandes. La guía me mostró que con $500 USD podés arrancar un negocio real. Hoy ya vendo todos los meses."</p>
+      <div class="testi-author"><div class="testi-avatar">L</div><div><div class="testi-name">Laura S.</div><div class="testi-role">Emprendedora · Córdoba</div></div></div>
+    </div>
+    <div class="testi-card">
+      <div class="testi-result">Cuenta ordenada</div>
+      <div class="testi-stars">★★★★★</div>
+      <p class="testi-text">"Tenía la cuenta de Mercado Libre trabada hace meses. En la primera sesión encontramos el problema y en 2 semanas recuperé el nivel de ventas anterior."</p>
+      <div class="testi-author"><div class="testi-avatar">F</div><div><div class="testi-name">Federico G.</div><div class="testi-role">Vendedor ML · Rosario</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="cta">
+  <div class="reveal">
+    <div class="section-label" style="justify-content:center">Siguiente paso</div>
+    <h2>Contanos tu objetivo.<br>Te decimos <span>qué hacer.</span></h2>
+    <p>Sin compromiso. Una charla de 15 minutos para entender tu situación y decirte si podemos ayudarte y cómo.</p>
+    <div class="cta-actions">
+      <a class="btn-primary" href="https://wa.me/5491160374306?text=Hola%20Innovasmart%2C%20quiero%20que%20me%20armes%20un%20plan" target="_blank">Hablar por WhatsApp →</a>
+      <a class="btn-ghost" href="#servicios">Ver programas</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-brand">Innovasmart</div>
+  <div class="footer-copy">© 2026 Innovasmart — Todos los derechos reservados</div>
+  <div class="footer-links">
+    <a href="#servicios">Servicios</a>
+    <a href="#proceso">Proceso</a>
+    <a href="https://wa.me/5491160374306" target="_blank">Contacto</a>
+  </div>
+</footer>
+
+<script>
+  const cursor = document.getElementById('cursor');
+  const ring = document.getElementById('cursorRing');
+  let mx = 0, my = 0, rx = 0, ry = 0;
+  document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; cursor.style.left = mx+'px'; cursor.style.top = my+'px'; });
+  function animRing() { rx += (mx-rx)*0.12; ry += (my-ry)*0.12; ring.style.left = rx+'px'; ring.style.top = ry+'px'; requestAnimationFrame(animRing); }
+  animRing();
+  document.querySelectorAll('a, button').forEach(el => {
+    el.addEventListener('mouseenter', () => { cursor.style.transform='translate(-50%,-50%) scale(2)'; ring.style.width='60px'; ring.style.height='60px'; });
+    el.addEventListener('mouseleave', () => { cursor.style.transform='translate(-50%,-50%) scale(1)'; ring.style.width='36px'; ring.style.height='36px'; });
+  });
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver(entries => { entries.forEach((e,i) => { if(e.isIntersecting){ setTimeout(()=>e.target.classList.add('visible'),i*80); observer.unobserve(e.target); } }); }, {threshold:0.1});
+  reveals.forEach(r => observer.observe(r));
+  const nav = document.querySelector('nav');
+  window.addEventListener('scroll', () => { nav.style.background = window.scrollY > 60 ? 'rgba(10,10,10,0.96)' : 'linear-gradient(to bottom, rgba(10,10,10,0.95), transparent)'; });
+</script>
+</body>
+</html>
