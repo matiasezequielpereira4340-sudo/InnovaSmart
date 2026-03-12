@@ -411,6 +411,47 @@
   </div>
 </footer>
 
+<!-- DÓLAR TICKER -->
+<div id="dolar-ticker" style="position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,0.96);border-top:1px solid rgba(201,168,76,0.2);backdrop-filter:blur(10px);z-index:90;padding:7px 5%;display:flex;align-items:center;gap:20px;font-family:'DM Sans',sans-serif;font-size:0.75rem;">
+  <span style="color:#C9A84C;letter-spacing:0.15em;text-transform:uppercase;font-size:0.65rem;flex-shrink:0;">💱 Dólar hoy</span>
+  <div id="dolar-values" style="display:flex;gap:16px;flex-wrap:wrap;"><span style="color:#555">Cargando...</span></div>
+  <span id="dolar-time" style="color:#444;font-size:0.62rem;margin-left:auto;flex-shrink:0;"></span>
+</div>
+
+<!-- IMPORTAR BOTÓN FLOTANTE -->
+<div id="importar-btn" onclick="toggleImportAR()" style="position:fixed;bottom:52px;right:24px;z-index:200;cursor:pointer;display:flex;align-items:center;gap:10px;background:#C9A84C;padding:12px 20px 12px 14px;border-radius:50px;box-shadow:0 4px 28px rgba(201,168,76,0.45);transition:transform 0.2s,box-shadow 0.2s;font-family:'DM Sans',sans-serif;">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <span style="font-weight:700;font-size:0.85rem;color:#0A0A0A;letter-spacing:0.04em;">ImportAR</span>
+</div>
+
+<!-- IMPORTAR VENTANA -->
+<div id="importar-window" style="position:fixed;bottom:120px;right:24px;width:370px;max-width:calc(100vw - 48px);height:540px;max-height:calc(100vh - 180px);background:#0E0E0E;border:1px solid rgba(201,168,76,0.2);border-radius:14px;display:none;flex-direction:column;z-index:200;box-shadow:0 24px 64px rgba(0,0,0,0.7);overflow:hidden;font-family:'DM Sans',sans-serif;">
+  <div style="background:#141414;padding:14px 18px;border-bottom:1px solid rgba(201,168,76,0.12);display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#C9A84C,#8B6914);display:flex;align-items:center;justify-content:center;font-size:1.1rem;">🚢</div>
+      <div>
+        <div style="font-weight:700;font-size:0.92rem;color:#F0EDE6;letter-spacing:0.02em;">ImportAR</div>
+        <div style="font-size:0.65rem;color:#C9A84C;letter-spacing:0.08em;">● Calculadora · Innovasmart</div>
+      </div>
+    </div>
+    <span onclick="toggleImportAR()" style="color:#555;cursor:pointer;font-size:1.1rem;padding:4px 8px;">✕</span>
+  </div>
+  <div id="chat-dolar-strip" style="background:#0A0A0A;padding:6px 16px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.68rem;color:#666;display:flex;gap:12px;flex-wrap:wrap;"></div>
+  <div id="importar-messages" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth;"></div>
+  <div style="padding:10px 14px;border-top:1px solid rgba(201,168,76,0.1);display:flex;gap:8px;background:#0A0A0A;">
+    <input id="importar-input" type="text" placeholder="Ej: 100 auriculares a $5 c/u desde China" style="flex:1;background:#181818;border:1px solid rgba(201,168,76,0.18);border-radius:8px;padding:9px 13px;color:#F0EDE6;font-family:'DM Sans',sans-serif;font-size:0.83rem;outline:none;" onkeydown="if(event.key==='Enter')sendImportAR()">
+    <button onclick="sendImportAR()" style="background:#C9A84C;border:none;border-radius:8px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
+<style>
+  @keyframes blink{0%,100%{opacity:0.2}50%{opacity:1}}
+  #importar-messages::-webkit-scrollbar{width:4px}
+  #importar-messages::-webkit-scrollbar-thumb{background:rgba(201,168,76,0.2);border-radius:2px}
+</style>
+
 <script>
   const cursor = document.getElementById('cursor');
   const ring = document.getElementById('cursorRing');
@@ -427,6 +468,168 @@
   reveals.forEach(r => observer.observe(r));
   const nav = document.querySelector('nav');
   window.addEventListener('scroll', () => { nav.style.background = window.scrollY > 60 ? 'rgba(10,10,10,0.96)' : 'linear-gradient(to bottom, rgba(10,10,10,0.95), transparent)'; });
+</script>
+
+<script>
+  // ── DÓLAR EN TIEMPO REAL ──────────────────────────────────────────
+  window.dolarData = {};
+  async function fetchDolar() {
+    try {
+      const res = await fetch('https://dolarapi.com/v1/dolares');
+      const data = await res.json();
+      const map = { oficial:'Oficial', blue:'Blue', mep:'MEP', cripto:'Cripto' };
+      const filtered = data.filter(d => map[d.casa]);
+      filtered.forEach(d => { window.dolarData[d.casa] = d.venta; });
+      document.getElementById('dolar-values').innerHTML = filtered
+        .map(d => `<span style="color:#F0EDE6"><span style="color:#C9A84C">${map[d.casa]}</span> $${d.venta?.toLocaleString('es-AR')}</span>`)
+        .join('<span style="color:#333"> · </span>');
+      const strip = document.getElementById('chat-dolar-strip');
+      if (strip) strip.innerHTML = filtered
+        .map(d => `<span><span style="color:#C9A84C">${map[d.casa]}</span> $${d.venta?.toLocaleString('es-AR')}</span>`)
+        .join('<span style="color:#2a2a2a"> · </span>');
+      const now = new Date();
+      document.getElementById('dolar-time').textContent = `Act. ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+    } catch(e) {
+      document.getElementById('dolar-values').innerHTML = '<span style="color:#444">No disponible</span>';
+    }
+  }
+  fetchDolar();
+  setInterval(fetchDolar, 5 * 60 * 1000);
+
+  // ── IMPORTAR CHATBOT ──────────────────────────────────────────────
+  let importarOpen = false;
+  let importarInit = false;
+  let chatHistory = [];
+
+  function toggleImportAR() {
+    importarOpen = !importarOpen;
+    const win = document.getElementById('importar-window');
+    win.style.display = importarOpen ? 'flex' : 'none';
+    if (importarOpen && !importarInit) {
+      importarInit = true;
+      addImportMsg('bot', '¡Hola! Soy ImportAR 🚢\n\nTe ayudo a calcular cuánto te cuesta traer un producto desde China a Argentina, con el dólar de hoy.\n\nContame:\n• ¿Qué producto querés importar?\n• ¿Cuánto cuesta en USD (precio unitario)?\n• ¿Qué cantidad querés traer?\n• ¿Cuánto pesa aproximadamente por unidad?');
+    }
+    if (importarOpen) setTimeout(() => document.getElementById('importar-input').focus(), 100);
+  }
+
+  function addImportMsg(role, text) {
+    const container = document.getElementById('importar-messages');
+    const isBot = role === 'bot';
+    const div = document.createElement('div');
+    div.style.cssText = `display:flex;${isBot ? 'justify-content:flex-start' : 'justify-content:flex-end'}`;
+    const bubble = document.createElement('div');
+    bubble.style.cssText = `
+      max-width:88%;padding:10px 13px;
+      border-radius:${isBot ? '4px 12px 12px 12px' : '12px 4px 12px 12px'};
+      background:${isBot ? '#1A1A1A' : '#C9A84C'};
+      color:${isBot ? '#E8E4DC' : '#0A0A0A'};
+      font-size:0.85rem;line-height:1.65;
+      border:${isBot ? '1px solid rgba(201,168,76,0.1)' : 'none'};
+      white-space:pre-wrap;word-break:break-word;
+    `;
+    bubble.textContent = text;
+    div.appendChild(bubble);
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function addTypingIndicator() {
+    const container = document.getElementById('importar-messages');
+    const div = document.createElement('div');
+    div.id = 'typing-dot';
+    div.style.cssText = 'display:flex;justify-content:flex-start;';
+    div.innerHTML = `<div style="padding:10px 14px;background:#1A1A1A;border:1px solid rgba(201,168,76,0.1);border-radius:4px 12px 12px 12px;display:flex;gap:5px;align-items:center;">
+      <span style="width:6px;height:6px;background:#C9A84C;border-radius:50%;animation:blink 1s infinite;display:inline-block;"></span>
+      <span style="width:6px;height:6px;background:#C9A84C;border-radius:50%;animation:blink 1s 0.3s infinite;display:inline-block;"></span>
+      <span style="width:6px;height:6px;background:#C9A84C;border-radius:50%;animation:blink 1s 0.6s infinite;display:inline-block;"></span>
+    </div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function removeTypingIndicator() {
+    const t = document.getElementById('typing-dot');
+    if (t) t.remove();
+  }
+
+  async function sendImportAR() {
+    const input = document.getElementById('importar-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    addImportMsg('user', text);
+    chatHistory.push({ role: 'user', content: text });
+    addTypingIndicator();
+
+    const dolarInfo = window.dolarData.oficial
+      ? `Cotizaciones actuales (venta): Oficial $${window.dolarData.oficial?.toLocaleString('es-AR')}, Blue $${window.dolarData.blue?.toLocaleString('es-AR')}, MEP $${window.dolarData.mep?.toLocaleString('es-AR')}`
+      : 'Cotización no disponible en este momento, usá un valor aproximado.';
+
+    const systemPrompt = `Sos ImportAR, el asistente de cálculo de importaciones de Innovasmart, creado por Matías Ezequiel Pereira. Tu función es ayudar a calcular costos de importar productos desde China a Argentina y asesorar sobre regímenes aduaneros.
+
+REGÍMENES ADUANEROS ARGENTINOS (explicá la diferencia cuando sea relevante):
+
+🔹 RÉGIMEN SIMPLIFICADO:
+- Hasta USD 3.000 por envío
+- Hasta 50 kg por bulto
+- SIN límite de veces al año
+- SIN límite de cantidad de productos de la misma especie
+- Ideal para importar volumen de un mismo producto de forma recurrente
+
+🔹 RÉGIMEN COURIER / PUERTA A PUERTA:
+- Hasta USD 3.000 por envío
+- Hasta 50 kg por bulto
+- Máximo 3 productos de la misma especie
+- Máximo 5 veces por año
+- Ideal para compras personales o variedad de productos
+
+CÁLCULO DE COSTOS (estimados orientativos):
+- Flete aéreo desde China: USD 5-12 por kg (según peso/volumen)
+- Flete marítimo: USD 1-3 por kg (más lento, 30-45 días)
+- Impuestos régimen simplificado: 50% sobre valor FOB + flete
+- Impuestos courier: 50% sobre valor CIF hasta USD 3.000
+- Siempre usá el dólar oficial para declaración aduanera
+
+PESO Y VOLUMEN - MUY IMPORTANTE:
+- Si el producto pesa más de 1 kg por unidad o es voluminoso (muebles, electrodomésticos grandes, etc.), advertí claramente que el costo de flete puede superar el valor del producto y no ser rentable
+- Calculá el costo de flete en relación al precio de venta esperado
+- Productos ideales para importar: livianos, alto valor por kg (electrónica pequeña, accesorios, joyería, textiles)
+- Productos con mal ratio peso/valor: muebles, herramientas pesadas, electrodomésticos grandes
+
+CERTIFICACIONES Y RESTRICCIONES:
+- Si el producto requiere certificación (electrónica con WiFi/Bluetooth → ENACOM, juguetes → IRAM, alimentos → SENASA, medicamentos → ANMAT, etc.), avisá claramente y recomendá contactar a Innovasmart para asesoría o a un despachante de aduana
+- Productos con intervención previa: armas, químicos, animales, plantas, medicamentos
+
+FORMATO DE RESPUESTA:
+- Sé claro, concreto y en argentino (usá "vos", "te", "$", "pesos")
+- Cuando calcules, mostrá el desglose completo con números
+- Si falta información, preguntá lo necesario antes de calcular
+- Siempre terminá con una recomendación accionable
+- Si el negocio no cierra en números, decilo honestamente
+
+${dolarInfo}`;
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          system: systemPrompt,
+          messages: chatHistory
+        })
+      });
+      const data = await response.json();
+      removeTypingIndicator();
+      const reply = data.content?.[0]?.text || 'Hubo un error. Intentá de nuevo.';
+      chatHistory.push({ role: 'assistant', content: reply });
+      addImportMsg('bot', reply);
+    } catch(e) {
+      removeTypingIndicator();
+      addImportMsg('bot', 'No pude conectarme. Verificá tu conexión e intentá de nuevo.');
+    }
+  }
 </script>
 </body>
 </html>
