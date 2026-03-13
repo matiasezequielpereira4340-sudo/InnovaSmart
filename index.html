@@ -3,41 +3,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InnovaSmart - Calculadora de Importación</title>
+    <title>InnovaSmart - Importaciones</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
-        :root { --gold: #C9A84C; --black: #0A0A0A; --surface: #111111; --text: #F0EDE6; }
-        body { background-color: var(--black); color: var(--text); font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
-        #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
-        .message { max-width: 80%; padding: 12px; border-radius: 15px; line-height: 1.4; }
-        .user { align-self: flex-end; background: var(--gold); color: black; }
-        .bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--gold); }
-        .input-area { padding: 20px; background: var(--surface); display: flex; gap: 10px; border-top: 1px solid #333; }
-        input { flex: 1; background: #222; border: 1px solid #444; color: white; padding: 12px; border-radius: 8px; outline: none; }
-        button { background: var(--gold); border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        :root {
+            --gold: #C9A84C;
+            --gold-light: #E8C96A;
+            --black: #0A0A0A;
+            --surface: #111111;
+            --text: #F0EDE6;
+        }
+        body {
+            background-color: var(--black);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        /* Barra de precios superior */
+        .ticker {
+            background: var(--surface);
+            padding: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            font-size: 0.9em;
+            border-bottom: 1px solid rgba(201, 168, 76, 0.2);
+        }
+        .ticker span { color: var(--gold); font-weight: bold; }
+
+        /* Contenedor del Chat */
+        #chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .message {
+            max-width: 85%;
+            padding: 15px;
+            border-radius: 18px;
+            line-height: 1.5;
+            position: relative;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .bot {
+            align-self: flex-start;
+            background: var(--surface);
+            border: 1px solid rgba(201, 168, 76, 0.3);
+            border-bottom-left-radius: 2px;
+        }
+        .user {
+            align-self: flex-end;
+            background: var(--gold);
+            color: black;
+            font-weight: 500;
+            border-bottom-right-radius: 2px;
+        }
+
+        /* Área de entrada */
+        .input-area {
+            padding: 20px;
+            background: var(--surface);
+            border-top: 1px solid #222;
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            outline: none;
+        }
+        input:focus { border-color: var(--gold); }
+        button {
+            background: var(--gold);
+            color: black;
+            border: none;
+            padding: 0 25px;
+            border-radius: 12px;
+            font-weight: bold;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <div id="chat-container">
-        <div class="message bot">¡Hola! Soy tu asistente de InnovaSmart. ¿Qué producto te gustaría importar hoy?</div>
+
+    <div class="ticker">
+        Oficial: <span>$1.410</span> Blue: <span>$1.410</span> Cripto: <span>$1.459,2</span>
     </div>
+
+    <div id="chat-container">
+        <div class="message bot">
+            <strong>Contame:</strong><br>
+            • ¿Qué producto querés importar?<br>
+            • ¿Cuánto cuesta en USD (precio unitario)?<br>
+            • ¿Qué cantidad querés traer?<br>
+            • ¿Cuánto pesa aproximadamente por unidad?
+        </div>
+    </div>
+
     <div class="input-area">
-        <input type="text" id="userInput" placeholder="Ej: 10 termos a $20 c/u...">
+        <input type="text" id="userInput" placeholder="Ej: 10 auriculares a $5 c/u desde China">
         <button onclick="sendMessage()">Enviar</button>
     </div>
 
     <script>
+        const container = document.getElementById('chat-container');
+        const input = document.getElementById('userInput');
+
         async function sendMessage() {
-            const input = document.getElementById('userInput');
-            const container = document.getElementById('chat-container');
             const text = input.value.trim();
             if (!text) return;
 
+            // Mostrar mensaje usuario
             container.innerHTML += `<div class="message user">${text}</div>`;
             input.value = '';
             container.scrollTop = container.scrollHeight;
 
             try {
-                // ESTA ES LA CONEXIÓN CLAVE A TU VERCEL
+                // LA CONEXIÓN CLAVE
                 const response = await fetch('https://importar-app.vercel.app/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -45,12 +139,16 @@
                 });
 
                 const data = await response.json();
-                container.innerHTML += `<div class="message bot">${data.reply || "No recibí respuesta."}</div>`;
+                
+                // Mostrar respuesta del bot
+                container.innerHTML += `<div class="message bot">${data.reply || "Lo siento, no pude procesar eso."}</div>`;
             } catch (error) {
-                container.innerHTML += `<div class="message bot" style="color: #ff6666;">Error de conexión. Aseguráte que Vercel esté activo.</div>`;
+                container.innerHTML += `<div class="message bot" style="border-color: red;">Hubo un error de conexión. Revisá que Vercel esté corriendo.</div>`;
             }
             container.scrollTop = container.scrollHeight;
         }
+
+        input.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
     </script>
 </body>
 </html>
