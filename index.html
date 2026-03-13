@@ -1,154 +1,631 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InnovaSmart - Importaciones</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --gold: #C9A84C;
-            --gold-light: #E8C96A;
-            --black: #0A0A0A;
-            --surface: #111111;
-            --text: #F0EDE6;
-        }
-        body {
-            background-color: var(--black);
-            color: var(--text);
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        /* Barra de precios superior */
-        .ticker {
-            background: var(--surface);
-            padding: 10px;
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            font-size: 0.9em;
-            border-bottom: 1px solid rgba(201, 168, 76, 0.2);
-        }
-        .ticker span { color: var(--gold); font-weight: bold; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Innovasmart — Importaciones & Mercado Libre</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #E8C96A;
+    --gold-dim: rgba(201,168,76,0.15);
+    --black: #0A0A0A;
+    --surface: #111111;
+    --surface2: #181818;
+    --border: rgba(201,168,76,0.2);
+    --text: #F0EDE6;
+    --muted: #888880;
+  }
 
-        /* Contenedor del Chat */
-        #chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-        .message {
-            max-width: 85%;
-            padding: 15px;
-            border-radius: 18px;
-            line-height: 1.5;
-            position: relative;
-            animation: fadeIn 0.3s ease;
-        }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--black); color: var(--text); font-family: 'DM Sans', sans-serif; overflow-x: hidden; cursor: none; }
 
-        .bot {
-            align-self: flex-start;
-            background: var(--surface);
-            border: 1px solid rgba(201, 168, 76, 0.3);
-            border-bottom-left-radius: 2px;
-        }
-        .user {
-            align-self: flex-end;
-            background: var(--gold);
-            color: black;
-            font-weight: 500;
-            border-bottom-right-radius: 2px;
-        }
+  .cursor { width: 10px; height: 10px; background: var(--gold); border-radius: 50%; position: fixed; pointer-events: none; z-index: 9999; transition: transform 0.15s ease; transform: translate(-50%, -50%); }
+  .cursor-ring { width: 36px; height: 36px; border: 1px solid rgba(201,168,76,0.5); border-radius: 50%; position: fixed; pointer-events: none; z-index: 9998; transition: transform 0.35s ease, width 0.3s, height 0.3s; transform: translate(-50%, -50%); }
 
-        /* Área de entrada */
-        .input-area {
-            padding: 20px;
-            background: var(--surface);
-            border-top: 1px solid #222;
-            display: flex;
-            gap: 10px;
-        }
-        input {
-            flex: 1;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: white;
-            padding: 15px;
-            border-radius: 12px;
-            outline: none;
-        }
-        input:focus { border-color: var(--gold); }
-        button {
-            background: var(--gold);
-            color: black;
-            border: none;
-            padding: 0 25px;
-            border-radius: 12px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-    </style>
+  /* NAV */
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; padding: 20px 5%; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(to bottom, rgba(10,10,10,0.95), transparent); backdrop-filter: blur(6px); }
+  .nav-logo { display: flex; align-items: center; gap: 10px; font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 700; color: var(--gold); text-decoration: none; }
+  .nav-logo img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+  .nav-links { display: flex; gap: 36px; list-style: none; }
+  .nav-links a { color: var(--muted); text-decoration: none; font-size: 0.88rem; letter-spacing: 0.08em; text-transform: uppercase; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--gold); }
+  .nav-cta { background: var(--gold); color: var(--black); padding: 10px 22px; border-radius: 4px; font-weight: 600; font-size: 0.85rem; text-decoration: none; letter-spacing: 0.04em; transition: background 0.2s, transform 0.2s; }
+  .nav-cta:hover { background: var(--gold-light); transform: translateY(-1px); }
+
+  /* HERO */
+  #hero { min-height: 100vh; display: grid; grid-template-columns: 1fr 1fr; align-items: center; position: relative; padding: 120px 5% 80px; overflow: hidden; gap: 60px; }
+  .hero-bg { position: absolute; inset: 0; background: radial-gradient(ellipse 60% 60% at 80% 50%, rgba(201,168,76,0.07) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 10% 80%, rgba(201,168,76,0.04) 0%, transparent 60%); }
+  .hero-grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(201,168,76,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(201,168,76,0.04) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 0%, transparent 100%); }
+  .hero-content { position: relative; z-index: 2; }
+  .hero-eyebrow { display: inline-flex; align-items: center; gap: 10px; font-size: 0.78rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin-bottom: 28px; opacity: 0; animation: fadeUp 0.8s 0.2s forwards; }
+  .hero-eyebrow::before { content: ''; display: block; width: 32px; height: 1px; background: var(--gold); }
+  h1 { font-family: 'Playfair Display', serif; font-size: clamp(2.2rem, 4vw, 4rem); font-weight: 900; line-height: 1.08; margin-bottom: 28px; opacity: 0; animation: fadeUp 0.8s 0.4s forwards; }
+  h1 em { font-style: normal; color: var(--gold); }
+  .hero-sub { font-size: 1rem; color: var(--muted); line-height: 1.7; margin-bottom: 48px; font-weight: 300; opacity: 0; animation: fadeUp 0.8s 0.6s forwards; }
+  .hero-actions { display: flex; gap: 16px; flex-wrap: wrap; opacity: 0; animation: fadeUp 0.8s 0.8s forwards; }
+
+  /* HERO PHOTO */
+  .hero-photo-wrap { position: relative; z-index: 2; display: flex; justify-content: center; align-items: flex-end; opacity: 0; animation: fadeLeft 0.9s 0.5s forwards; }
+  .hero-photo-frame { position: relative; }
+  .hero-photo-frame::before { content: ''; position: absolute; inset: -2px; border-radius: 12px 12px 0 0; background: linear-gradient(135deg, var(--gold), transparent 60%); z-index: -1; }
+  .hero-photo { width: 100%; max-width: 420px; border-radius: 12px 12px 0 0; object-fit: cover; display: block; filter: grayscale(15%) contrast(1.05); }
+  .hero-photo-badge { position: absolute; bottom: 24px; left: -20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; }
+  .hero-photo-badge .num { font-family: 'Playfair Display', serif; font-size: 1.8rem; color: var(--gold); font-weight: 700; line-height: 1; }
+  .hero-photo-badge .label { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  .btn-primary { background: var(--gold); color: var(--black); padding: 16px 34px; border-radius: 4px; font-weight: 600; font-size: 0.95rem; text-decoration: none; letter-spacing: 0.03em; transition: all 0.25s; display: inline-flex; align-items: center; gap: 8px; }
+  .btn-primary:hover { background: var(--gold-light); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(201,168,76,0.25); }
+  .btn-ghost { border: 1px solid var(--border); color: var(--text); padding: 16px 34px; border-radius: 4px; font-weight: 400; font-size: 0.95rem; text-decoration: none; letter-spacing: 0.03em; transition: all 0.25s; }
+  .btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+  /* SECTION BASE */
+  section { padding: 100px 5%; }
+  .section-label { font-size: 0.75rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--gold); margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .section-label::before { content: ''; display: block; width: 24px; height: 1px; background: var(--gold); }
+  h2 { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; line-height: 1.15; margin-bottom: 16px; }
+  h2 span { color: var(--gold); }
+  .section-intro { color: var(--muted); font-size: 1rem; line-height: 1.7; max-width: 520px; margin-bottom: 64px; font-weight: 300; }
+
+  /* VIDEOS */
+  #videos { background: var(--surface); }
+  .videos-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .video-wrap { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--black); }
+  .video-label { font-size: 0.72rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--gold); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .video-label::before { content: ''; display: block; width: 16px; height: 1px; background: var(--gold); }
+  .video-title { font-size: 1rem; font-weight: 500; margin-bottom: 16px; }
+  .yt-container { position: relative; padding-bottom: 177.77%; height: 0; overflow: hidden; border-radius: 8px; }
+  .yt-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+  .tiktok-container { display: flex; justify-content: center; }
+  .tiktok-container blockquote { max-width: 100% !important; min-width: unset !important; }
+
+  /* SERVICIOS */
+  #servicios { background: var(--black); }
+  .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2px; }
+  .service-card { background: var(--surface); padding: 40px 36px; position: relative; overflow: hidden; transition: transform 0.3s; cursor: none; }
+  .service-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--gold); transform: scaleX(0); transform-origin: left; transition: transform 0.4s ease; }
+  .service-card:hover { transform: translateY(-4px); }
+  .service-card:hover::before { transform: scaleX(1); }
+  .service-icon { font-size: 2rem; margin-bottom: 20px; display: block; }
+  .service-card h3 { font-family: 'Playfair Display', serif; font-size: 1.3rem; margin-bottom: 12px; }
+  .service-card p { color: var(--muted); font-size: 0.9rem; line-height: 1.65; margin-bottom: 24px; }
+  .service-price { font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); font-weight: 600; border-top: 1px solid var(--border); padding-top: 20px; display: flex; align-items: baseline; gap: 6px; }
+  .price-num { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: var(--text); }
+  .service-badge { position: absolute; top: 16px; right: 16px; background: var(--gold); color: var(--black); font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 10px; border-radius: 2px; font-weight: 700; }
+  .service-link { display: inline-flex; align-items: center; gap: 6px; color: var(--gold); font-size: 0.85rem; text-decoration: none; margin-top: 20px; font-weight: 500; transition: gap 0.2s; }
+  .service-link:hover { gap: 10px; }
+
+  /* SOBRE MÍ */
+  #sobre-mi { background: var(--surface); }
+  .sobre-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 80px; align-items: center; }
+  .sobre-photo { width: 100%; border-radius: 8px; object-fit: cover; filter: grayscale(10%); border: 1px solid var(--border); }
+  .sobre-content .section-label { margin-bottom: 16px; }
+  .sobre-content h2 { margin-bottom: 24px; }
+  .sobre-content p { color: var(--muted); font-size: 1rem; line-height: 1.8; margin-bottom: 20px; font-weight: 300; }
+  .sobre-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 40px; }
+  .sobre-stat { border-left: 2px solid var(--gold); padding-left: 16px; }
+  .sobre-stat .num { font-family: 'Playfair Display', serif; font-size: 2rem; color: var(--gold); font-weight: 700; line-height: 1; }
+  .sobre-stat .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+  /* PROCESO */
+  #proceso { background: var(--black); }
+  .proceso-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+  .proceso-steps { display: flex; flex-direction: column; }
+  .step { display: flex; gap: 28px; padding: 32px 0; border-bottom: 1px solid var(--border); transition: all 0.3s; }
+  .step:first-child { border-top: 1px solid var(--border); }
+  .step-num { font-family: 'Playfair Display', serif; font-size: 3rem; font-weight: 700; color: rgba(201,168,76,0.15); line-height: 1; min-width: 60px; transition: color 0.3s; }
+  .step:hover .step-num { color: var(--gold); }
+  .step-content h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+  .step-content p { color: var(--muted); font-size: 0.9rem; line-height: 1.65; }
+  .proceso-visual { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 48px; position: relative; overflow: hidden; }
+  .proceso-visual::before { content: ''; position: absolute; top: -40px; right: -40px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(201,168,76,0.12), transparent 70%); }
+  .pv-label { font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin-bottom: 20px; }
+  .pv-quote { font-family: 'Playfair Display', serif; font-size: 1.5rem; line-height: 1.4; margin-bottom: 32px; }
+  .pv-features { display: flex; flex-direction: column; gap: 14px; }
+  .pv-feature { display: flex; align-items: center; gap: 12px; font-size: 0.9rem; color: var(--muted); }
+  .pv-feature::before { content: '✓'; color: var(--gold); font-weight: 700; width: 20px; text-align: center; flex-shrink: 0; }
+
+  /* TESTIMONIOS */
+  #testimonios { background: var(--surface); }
+  .testimonios-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+  .testi-card { background: var(--black); border: 1px solid var(--border); border-radius: 6px; padding: 36px; position: relative; transition: border-color 0.3s, transform 0.3s; }
+  .testi-card:hover { border-color: var(--gold); transform: translateY(-3px); }
+  .testi-stars { color: var(--gold); font-size: 0.9rem; margin-bottom: 20px; letter-spacing: 3px; }
+  .testi-text { font-size: 0.95rem; line-height: 1.7; color: var(--text); margin-bottom: 28px; font-style: italic; }
+  .testi-author { display: flex; align-items: center; gap: 12px; }
+  .testi-avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--gold-dim); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--gold); font-weight: 700; }
+  .testi-name { font-weight: 600; font-size: 0.9rem; }
+  .testi-role { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+  .testi-result { position: absolute; top: 24px; right: 24px; background: var(--gold-dim); border: 1px solid var(--border); color: var(--gold); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 12px; border-radius: 2px; font-weight: 600; }
+
+  /* CTA */
+  #cta { background: var(--black); text-align: center; padding: 120px 5%; position: relative; overflow: hidden; }
+  #cta::before { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 600px; height: 600px; border-radius: 50%; background: radial-gradient(circle, rgba(201,168,76,0.06), transparent 70%); pointer-events: none; }
+  #cta h2 { max-width: 600px; margin: 0 auto 20px; }
+  #cta p { color: var(--muted); max-width: 460px; margin: 0 auto 48px; line-height: 1.7; }
+  .cta-actions { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+
+  /* FOOTER */
+  footer { background: var(--surface); border-top: 1px solid var(--border); padding: 40px 5%; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
+  .footer-brand { font-family: 'Playfair Display', serif; font-size: 1.1rem; color: var(--gold); }
+  .footer-copy { color: var(--muted); font-size: 0.8rem; }
+  .footer-links { display: flex; gap: 24px; }
+  .footer-links a { color: var(--muted); font-size: 0.8rem; text-decoration: none; transition: color 0.2s; }
+  .footer-links a:hover { color: var(--gold); }
+
+  /* ANIMATIONS */
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeLeft { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* MOBILE */
+  @media (max-width: 900px) {
+    #hero { grid-template-columns: 1fr; padding-top: 100px; }
+    .hero-photo-wrap { display: none; }
+    .sobre-grid { grid-template-columns: 1fr; gap: 40px; }
+    .proceso-grid { grid-template-columns: 1fr; gap: 48px; }
+    .videos-grid { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+    body { cursor: auto; }
+    .cursor, .cursor-ring { display: none; }
+    .sobre-stats { grid-template-columns: repeat(3,1fr); }
+  }
+</style>
 </head>
 <body>
 
-    <div class="ticker">
-        Oficial: <span>$1.410</span> Blue: <span>$1.410</span> Cripto: <span>$1.459,2</span>
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="#">
+    <img src="https://ezequielsantiago-star.github.io/Web-Innovasmart/img/logo-innovasmart.jpeg" alt="Innovasmart">
+    Innovasmart
+  </a>
+  <ul class="nav-links">
+    <li><a href="#servicios">Servicios</a></li>
+    <li><a href="#proceso">Proceso</a></li>
+    <li><a href="#testimonios">Resultados</a></li>
+    <li><a href="#videos">Videos</a></li>
+    <li><a href="javascript:void(0)" onclick="toggleImportAR()" style="color:var(--gold)!important;">Calculadora</a></li>
+    <li><a href="#cta">Contacto</a></li>
+  </ul>
+  <a class="nav-cta" href="https://wa.me/5491160374306" target="_blank">Hablar ahora →</a>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">Asesoría de importaciones · Argentina</div>
+    <h1>El negocio que <em>nadie</em><br>te enseña en Argentina</h1>
+    <p class="hero-sub">Importá con margen, vendé con estructura y escalá sin caos. Un sistema completo: desde tu primera compra hasta Mercado Libre optimizado.</p>
+    <div class="hero-actions">
+      <a class="btn-primary" href="https://wa.me/5491160374306" target="_blank">Quiero empezar →</a>
+      <a class="btn-ghost" href="#servicios">Ver programas</a>
+    </div>
+  </div>
+  <div class="hero-photo-wrap">
+    <div class="hero-photo-frame">
+      <img class="hero-photo" src="ezequiel.png" alt="Matías Ezequiel Pereira — Fundador Innovasmart">
+      <div class="hero-photo-badge">
+        <div class="num">+200</div>
+        <div class="label">clientes asesorados</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOBRE MÍ -->
+<section id="sobre-mi">
+  <div class="sobre-grid reveal">
+    <img class="sobre-photo" src="ezequiel.png" alt="Matías Ezequiel Pereira">
+    <div class="sobre-content">
+      <div class="section-label">Quién soy</div>
+      <h2>Matías Ezequiel Pereira,<br><span>importador y mentor</span></h2>
+      <p>Empecé a importar desde cero, cometí los errores caros que nadie te cuenta y construí un sistema que funciona en el contexto argentino. Hoy ayudo a otros a saltarse esa curva de aprendizaje.</p>
+      <p>No vendo teoría de manual. Cada recomendación que hago la probé primero con mi propio dinero.</p>
+      <div class="sobre-stats">
+        <div class="sobre-stat"><div class="num">+200</div><div class="lbl">Clientes</div></div>
+        <div class="sobre-stat"><div class="num">4</div><div class="lbl">Programas</div></div>
+        <div class="sobre-stat"><div class="num">100%</div><div class="lbl">Orientado a resultados</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VIDEOS -->
+<section id="videos">
+  <div class="reveal">
+    <div class="section-label">Contenido</div>
+    <h2>Mirá cómo <span>pensamos el negocio</span></h2>
+    <p class="section-intro">Videos reales sobre importación, Mercado Libre y cómo construir un negocio con estructura en Argentina.</p>
+  </div>
+  <div class="videos-grid reveal">
+    <div>
+      <div class="video-label">YouTube</div>
+      <div class="video-title">Cómo empezar a importar</div>
+      <div class="yt-container">
+        <iframe src="https://www.youtube.com/embed/PY61vN7_NP8" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+      </div>
+    </div>
+    <div>
+      <div class="video-label">TikTok</div>
+      <div class="video-title">Tips de importación</div>
+      <div class="tiktok-container">
+        <blockquote class="tiktok-embed" cite="https://www.tiktok.com/@matyfortin/video/7525105648812510470" data-video-id="7525105648812510470" style="max-width: 100%; min-width: 280px;">
+          <section>
+            <a href="https://www.tiktok.com/@matyfortin/video/7525105648812510470" target="_blank">Ver video en TikTok →</a>
+          </section>
+        </blockquote>
+        <script async src="https://www.tiktok.com/embed.js"></script>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICIOS -->
+<section id="servicios">
+  <div class="reveal">
+    <div class="section-label">Programas</div>
+    <h2>Elegí tu <span>nivel de entrada</span></h2>
+    <p class="section-intro">Desde la primera importación hasta la operación escalada. Cada nivel está diseñado para una etapa específica de tu negocio.</p>
+  </div>
+  <div class="services-grid reveal">
+
+    <div class="service-card">
+      <span class="service-icon">📦</span>
+      <h3>Guía Importador Inicial</h3>
+      <p>Paso a paso para tu primera importación. Guía completa, plantillas de costos y checklist para evitar los errores más caros.</p>
+      <div class="service-price"><span class="price-num">$49.000</span><span>pago único</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306" target="_blank">Quiero este nivel →</a>
     </div>
 
-    <div id="chat-container">
-        <div class="message bot">
-            <strong>Contame:</strong><br>
-            • ¿Qué producto querés importar?<br>
-            • ¿Cuánto cuesta en USD (precio unitario)?<br>
-            • ¿Qué cantidad querés traer?<br>
-            • ¿Cuánto pesa aproximadamente por unidad?
-        </div>
+    <div class="service-card">
+      <span class="service-icon">🛒</span>
+      <h3>Ventas en Mercado Libre</h3>
+      <p>Publicaciones optimizadas, reputación y conversión. Vendé con estrategia y no a prueba y error.</p>
+      <div class="service-price"><span class="price-num">$89.000</span><span>pago único</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306" target="_blank">Quiero este nivel →</a>
     </div>
 
-    <div class="input-area">
-        <input type="text" id="userInput" placeholder="Ej: 10 auriculares a $5 c/u desde China">
-        <button onclick="sendMessage()">Enviar</button>
+    <div class="service-card">
+      <span class="service-icon">🚀</span>
+      <h3>Full / Flex — Escala</h3>
+      <p>Fulfillment, logística avanzada y automatización. Para quienes ya venden y quieren crecer sin operar todo ellos mismos.</p>
+      <div class="service-price"><span class="price-num">$149.000</span><span>pago único</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306" target="_blank">Quiero este nivel →</a>
     </div>
 
-    <script>
-        const container = document.getElementById('chat-container');
-        const input = document.getElementById('userInput');
+    <div class="service-card">
+      <div class="service-badge">🔥 Premium</div>
+      <span class="service-icon">💎</span>
+      <h3>Mentoría 1 a 1 de Alto Impacto</h3>
+      <p>Diagnóstico personal + plan 30/60/90 días + acompañamiento directo. Para quienes van en serio y quieren resultados rápidos.</p>
+      <div class="service-price"><span class="price-num">$250.000</span><span>aplicación previa</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306" target="_blank">Aplicar ahora →</a>
+    </div>
 
-        async function sendMessage() {
-            const text = input.value.trim();
-            if (!text) return;
+    <div class="service-card">
+      <span class="service-icon">📣</span>
+      <h3>Marketing Digital</h3>
+      <p>Gestión de redes sociales, publicidad paga (Meta Ads), creación de contenido y estrategia de marca. Generá clientes de forma predecible.</p>
+      <div class="service-price"><span style="font-size:1rem;color:var(--muted);font-family:'DM Sans'">Consultar precio →</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306?text=Hola%20Innovasmart%2C%20quiero%20info%20sobre%20Marketing%20Digital" target="_blank">Pedir información →</a>
+    </div>
 
-            // Mostrar mensaje usuario
-            container.innerHTML += `<div class="message user">${text}</div>`;
-            input.value = '';
-            container.scrollTop = container.scrollHeight;
+    <div class="service-card">
+      <span class="service-icon">🌐</span>
+      <h3>Desarrollo Web</h3>
+      <p>Sitios y landing pages rápidas, responsive y orientadas a conversión. Tu presencia online que vende mientras dormís.</p>
+      <div class="service-price"><span style="font-size:1rem;color:var(--muted);font-family:'DM Sans'">Consultar precio →</span></div>
+      <a class="service-link" href="https://wa.me/5491160374306?text=Hola%20Innovasmart%2C%20quiero%20info%20sobre%20Desarrollo%20Web" target="_blank">Pedir presupuesto →</a>
+    </div>
 
-            try {
-                // LA CONEXIÓN CLAVE
-                const response = await fetch('https://importar-app.vercel.app/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text })
-                });
+  </div>
+</section>
 
-                const data = await response.json();
-                
-                // Mostrar respuesta del bot
-                container.innerHTML += `<div class="message bot">${data.reply || "Lo siento, no pude procesar eso."}</div>`;
-            } catch (error) {
-                container.innerHTML += `<div class="message bot" style="border-color: red;">Hubo un error de conexión. Revisá que Vercel esté corriendo.</div>`;
-            }
-            container.scrollTop = container.scrollHeight;
-        }
+<!-- PROCESO -->
+<section id="proceso">
+  <div class="proceso-grid">
+    <div>
+      <div class="reveal">
+        <div class="section-label">Metodología</div>
+        <h2>Simple, claro<br><span>y accionable</span></h2>
+        <p class="section-intro">Sin teoría de más. Cada paso tiene un objetivo concreto y una acción asociada.</p>
+      </div>
+      <div class="proceso-steps reveal">
+        <div class="step"><div class="step-num">01</div><div class="step-content"><h3>Diagnóstico</h3><p>Analizamos tu situación actual, tu capital disponible y tu objetivo real. Sin suposiciones.</p></div></div>
+        <div class="step"><div class="step-num">02</div><div class="step-content"><h3>Plan a medida</h3><p>Armamos el camino: qué hacer primero, qué después, y qué evitar. Con fechas y métricas.</p></div></div>
+        <div class="step"><div class="step-num">03</div><div class="step-content"><h3>Implementación</h3><p>Te acompañamos en la ejecución. No te dejamos solo con un PDF y suerte.</p></div></div>
+        <div class="step"><div class="step-num">04</div><div class="step-content"><h3>Optimización</h3><p>Revisamos resultados y ajustamos. Un negocio real se optimiza constantemente.</p></div></div>
+      </div>
+    </div>
+    <div class="proceso-visual reveal">
+      <div class="pv-label">Por qué Innovasmart</div>
+      <div class="pv-quote">"No vendemos teoría.<br>Construimos negocios."</div>
+      <div class="pv-features">
+        <div class="pv-feature">Acompañamiento real en cada etapa, no solo material</div>
+        <div class="pv-feature">Metodología probada con más de 200 clientes</div>
+        <div class="pv-feature">Enfoque en margen, no solo en volumen</div>
+        <div class="pv-feature">Acceso directo al equipo vía WhatsApp</div>
+        <div class="pv-feature">Sin humo: solo lo que funciona en Argentina hoy</div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        input.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
-    </script>
+<!-- TESTIMONIOS -->
+<section id="testimonios">
+  <div class="reveal">
+    <div class="section-label">Resultados reales</div>
+    <h2>Lo que dicen<br><span>quienes ya escalaron</span></h2>
+    <p class="section-intro">Resultados concretos de personas que empezaron desde cero o necesitaban orden en su operación.</p>
+  </div>
+  <div class="testimonios-grid reveal">
+    <div class="testi-card">
+      <div class="testi-result">+180% ventas</div>
+      <div class="testi-stars">★★★★★</div>
+      <p class="testi-text">"Antes importaba sin saber si ganaba o perdía plata. Con el plan de Matías en 60 días dupliqué mi margen y organicé toda la operación."</p>
+      <div class="testi-author"><div class="testi-avatar">M</div><div><div class="testi-name">Marcos R.</div><div class="testi-role">Importador · Buenos Aires</div></div></div>
+    </div>
+    <div class="testi-card">
+      <div class="testi-result">Primera importación</div>
+      <div class="testi-stars">★★★★★</div>
+      <p class="testi-text">"Pensé que importar era para empresas grandes. La guía me mostró que con $500 USD podés arrancar un negocio real. Hoy ya vendo todos los meses."</p>
+      <div class="testi-author"><div class="testi-avatar">L</div><div><div class="testi-name">Laura S.</div><div class="testi-role">Emprendedora · Córdoba</div></div></div>
+    </div>
+    <div class="testi-card">
+      <div class="testi-result">Cuenta ordenada</div>
+      <div class="testi-stars">★★★★★</div>
+      <p class="testi-text">"Tenía la cuenta de Mercado Libre trabada hace meses. En la primera sesión encontramos el problema y en 2 semanas recuperé el nivel de ventas anterior."</p>
+      <div class="testi-author"><div class="testi-avatar">F</div><div><div class="testi-name">Federico G.</div><div class="testi-role">Vendedor ML · Rosario</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="cta">
+  <div class="reveal">
+    <div class="section-label" style="justify-content:center">Siguiente paso</div>
+    <h2>Contanos tu objetivo.<br>Te decimos <span>qué hacer.</span></h2>
+    <p>Sin compromiso. Una charla de 15 minutos para entender tu situación y decirte si podemos ayudarte y cómo.</p>
+    <div class="cta-actions">
+      <a class="btn-primary" href="https://wa.me/5491160374306?text=Hola%20Innovasmart%2C%20quiero%20que%20me%20armes%20un%20plan" target="_blank">Hablar por WhatsApp →</a>
+      <a class="btn-ghost" href="#servicios">Ver programas</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-brand">Innovasmart</div>
+  <div class="footer-copy">© 2026 Innovasmart — Todos los derechos reservados</div>
+  <div class="footer-links">
+    <a href="#servicios">Servicios</a>
+    <a href="#proceso">Proceso</a>
+    <a href="https://wa.me/5491160374306" target="_blank">Contacto</a>
+  </div>
+</footer>
+
+<!-- DÓLAR TICKER -->
+<div id="dolar-ticker" style="position:fixed;bottom:0;left:0;right:0;background:rgba(10,10,10,0.96);border-top:1px solid rgba(201,168,76,0.2);backdrop-filter:blur(10px);z-index:90;padding:7px 5%;display:flex;align-items:center;gap:20px;font-family:'DM Sans',sans-serif;font-size:0.75rem;">
+  <span style="color:#C9A84C;letter-spacing:0.15em;text-transform:uppercase;font-size:0.65rem;flex-shrink:0;">💱 Dólar hoy</span>
+  <div id="dolar-values" style="display:flex;gap:16px;flex-wrap:wrap;"><span style="color:#555">Cargando...</span></div>
+  <span id="dolar-time" style="color:#444;font-size:0.62rem;margin-left:auto;flex-shrink:0;"></span>
+</div>
+
+<!-- IMPORTAR BOTÓN FLOTANTE -->
+<div id="importar-btn" onclick="toggleImportAR()" style="position:fixed;bottom:52px;right:24px;z-index:200;cursor:pointer;display:flex;align-items:center;gap:10px;background:#C9A84C;padding:12px 20px 12px 14px;border-radius:50px;box-shadow:0 4px 28px rgba(201,168,76,0.45);transition:transform 0.2s,box-shadow 0.2s;font-family:'DM Sans',sans-serif;">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <span style="font-weight:700;font-size:0.85rem;color:#0A0A0A;letter-spacing:0.04em;">ImportAR</span>
+</div>
+
+<!-- IMPORTAR VENTANA -->
+<div id="importar-window" style="position:fixed;bottom:120px;right:24px;width:370px;max-width:calc(100vw - 48px);height:540px;max-height:calc(100vh - 180px);background:#0E0E0E;border:1px solid rgba(201,168,76,0.2);border-radius:14px;display:none;flex-direction:column;z-index:200;box-shadow:0 24px 64px rgba(0,0,0,0.7);overflow:hidden;font-family:'DM Sans',sans-serif;">
+  <div style="background:#141414;padding:14px 18px;border-bottom:1px solid rgba(201,168,76,0.12);display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#C9A84C,#8B6914);display:flex;align-items:center;justify-content:center;font-size:1.1rem;">🚢</div>
+      <div>
+        <div style="font-weight:700;font-size:0.92rem;color:#F0EDE6;letter-spacing:0.02em;">ImportAR</div>
+        <div style="font-size:0.65rem;color:#C9A84C;letter-spacing:0.08em;">● Calculadora · Innovasmart</div>
+      </div>
+    </div>
+    <span onclick="toggleImportAR()" style="color:#555;cursor:pointer;font-size:1.1rem;padding:4px 8px;">✕</span>
+  </div>
+  <div id="chat-dolar-strip" style="background:#0A0A0A;padding:6px 16px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.68rem;color:#666;display:flex;gap:12px;flex-wrap:wrap;"></div>
+  <div id="importar-messages" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;scroll-behavior:smooth;"></div>
+  <div style="padding:10px 14px;border-top:1px solid rgba(201,168,76,0.1);display:flex;gap:8px;background:#0A0A0A;">
+    <input id="importar-input" type="text" placeholder="Ej: 100 auriculares a $5 c/u desde China" style="flex:1;background:#181818;border:1px solid rgba(201,168,76,0.18);border-radius:8px;padding:9px 13px;color:#F0EDE6;font-family:'DM Sans',sans-serif;font-size:0.83rem;outline:none;" onkeydown="if(event.key==='Enter')sendImportAR()">
+    <button onclick="sendImportAR()" style="background:#C9A84C;border:none;border-radius:8px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
+
+<style>
+  @keyframes blink{0%,100%{opacity:0.2}50%{opacity:1}}
+  #importar-messages::-webkit-scrollbar{width:4px}
+  #importar-messages::-webkit-scrollbar-thumb{background:rgba(201,168,76,0.2);border-radius:2px}
+</style>
+
+<script>
+  const cursor = document.getElementById('cursor');
+  const ring = document.getElementById('cursorRing');
+  let mx = 0, my = 0, rx = 0, ry = 0;
+  document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; cursor.style.left = mx+'px'; cursor.style.top = my+'px'; });
+  function animRing() { rx += (mx-rx)*0.12; ry += (my-ry)*0.12; ring.style.left = rx+'px'; ring.style.top = ry+'px'; requestAnimationFrame(animRing); }
+  animRing();
+  document.querySelectorAll('a, button').forEach(el => {
+    el.addEventListener('mouseenter', () => { cursor.style.transform='translate(-50%,-50%) scale(2)'; ring.style.width='60px'; ring.style.height='60px'; });
+    el.addEventListener('mouseleave', () => { cursor.style.transform='translate(-50%,-50%) scale(1)'; ring.style.width='36px'; ring.style.height='36px'; });
+  });
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver(entries => { entries.forEach((e,i) => { if(e.isIntersecting){ setTimeout(()=>e.target.classList.add('visible'),i*80); observer.unobserve(e.target); } }); }, {threshold:0.1});
+  reveals.forEach(r => observer.observe(r));
+  const nav = document.querySelector('nav');
+  window.addEventListener('scroll', () => { nav.style.background = window.scrollY > 60 ? 'rgba(10,10,10,0.96)' : 'linear-gradient(to bottom, rgba(10,10,10,0.95), transparent)'; });
+</script>
+
+<script>
+  // ── DÓLAR EN TIEMPO REAL ──────────────────────────────────────────
+  window.dolarData = {};
+  async function fetchDolar() {
+    try {
+      const res = await fetch('https://dolarapi.com/v1/dolares');
+      const data = await res.json();
+      const map = { oficial:'Oficial', blue:'Blue', mep:'MEP', cripto:'Cripto' };
+      const filtered = data.filter(d => map[d.casa]);
+      filtered.forEach(d => { window.dolarData[d.casa] = d.venta; });
+      document.getElementById('dolar-values').innerHTML = filtered
+        .map(d => `<span style="color:#F0EDE6"><span style="color:#C9A84C">${map[d.casa]}</span> $${d.venta?.toLocaleString('es-AR')}</span>`)
+        .join('<span style="color:#333"> · </span>');
+      const strip = document.getElementById('chat-dolar-strip');
+      if (strip) strip.innerHTML = filtered
+        .map(d => `<span><span style="color:#C9A84C">${map[d.casa]}</span> $${d.venta?.toLocaleString('es-AR')}</span>`)
+        .join('<span style="color:#2a2a2a"> · </span>');
+      const now = new Date();
+      document.getElementById('dolar-time').textContent = `Act. ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+    } catch(e) {
+      document.getElementById('dolar-values').innerHTML = '<span style="color:#444">No disponible</span>';
+    }
+  }
+  fetchDolar();
+  setInterval(fetchDolar, 5 * 60 * 1000);
+
+  // ── IMPORTAR CHATBOT ──────────────────────────────────────────────
+  let importarOpen = false;
+  let importarInit = false;
+  let chatHistory = [];
+
+  function toggleImportAR() {
+    importarOpen = !importarOpen;
+    const win = document.getElementById('importar-window');
+    win.style.display = importarOpen ? 'flex' : 'none';
+    if (importarOpen && !importarInit) {
+      importarInit = true;
+      addImportMsg('bot', '¡Hola! Soy ImportAR 🚢\n\nTe ayudo a calcular cuánto te cuesta traer un producto desde China a Argentina, con el dólar de hoy.\n\nContame:\n• ¿Qué producto querés importar?\n• ¿Cuánto cuesta en USD (precio unitario)?\n• ¿Qué cantidad querés traer?\n• ¿Cuánto pesa aproximadamente por unidad?');
+    }
+    if (importarOpen) setTimeout(() => document.getElementById('importar-input').focus(), 100);
+  }
+
+  function addImportMsg(role, text) {
+    const container = document.getElementById('importar-messages');
+    const isBot = role === 'bot';
+    const div = document.createElement('div');
+    div.style.cssText = `display:flex;${isBot ? 'justify-content:flex-start' : 'justify-content:flex-end'}`;
+    const bubble = document.createElement('div');
+    bubble.style.cssText = `
+      max-width:88%;padding:10px 13px;
+      border-radius:${isBot ? '4px 12px 12px 12px' : '12px 4px 12px 12px'};
+      background:${isBot ? '#1A1A1A' : '#C9A84C'};
+      color:${isBot ? '#E8E4DC' : '#0A0A0A'};
+      font-size:0.85rem;line-height:1.65;
+      border:${isBot ? '1px solid rgba(201,168,76,0.1)' : 'none'};
+      white-space:pre-wrap;word-break:break-word;
+    `;
+    bubble.textContent = text;
+    div.appendChild(bubble);
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function addTypingIndicator() {
+    const container = document.getElementById('importar-messages');
+    const div = document.createElement('div');
+    div.id = 'typing-dot';
+    div.style.cssText = 'display:flex;justify-content:flex-start;';
+    div.innerHTML = `<div style="padding:10px 14px;background:#1A1A1A;border:1px solid rgba(201,168,76,0.1);border-radius:4px 12px 12px 12px;display:flex;gap:5px;align-items:center;">
+      <span style="width:6px;height:6px;background:#C9A84C;border-radius:50%;animation:blink 1s infinite;display:inline-block;"></span>
+      <span style="width:6px;height:6px;background:#C9A84C;border-radius:50%;animation:blink 1s 0.3s infinite;display:inline-block;"></span>
+      <span style="width:6px;height:6px;background:#C9A84C;border-radius:50%;animation:blink 1s 0.6s infinite;display:inline-block;"></span>
+    </div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  function removeTypingIndicator() {
+    const t = document.getElementById('typing-dot');
+    if (t) t.remove();
+  }
+
+  async function sendImportAR() {
+    const input = document.getElementById('importar-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    addImportMsg('user', text);
+    chatHistory.push({ role: 'user', content: text });
+    addTypingIndicator();
+
+    const dolarInfo = window.dolarData.oficial
+      ? `Cotizaciones actuales (venta): Oficial $${window.dolarData.oficial?.toLocaleString('es-AR')}, Blue $${window.dolarData.blue?.toLocaleString('es-AR')}, MEP $${window.dolarData.mep?.toLocaleString('es-AR')}`
+      : 'Cotización no disponible en este momento, usá un valor aproximado.';
+
+    const systemPrompt = `Sos ImportAR, el asistente de cálculo de importaciones de Innovasmart, creado por Matías Ezequiel Pereira. Tu función es ayudar a calcular costos de importar productos desde China a Argentina y asesorar sobre regímenes aduaneros.
+
+REGÍMENES ADUANEROS ARGENTINOS (explicá la diferencia cuando sea relevante):
+
+🔹 RÉGIMEN SIMPLIFICADO:
+- Hasta USD 3.000 por envío
+- Hasta 50 kg por bulto
+- SIN límite de veces al año
+- SIN límite de cantidad de productos de la misma especie
+- Ideal para importar volumen de un mismo producto de forma recurrente
+
+🔹 RÉGIMEN COURIER / PUERTA A PUERTA:
+- Hasta USD 3.000 por envío
+- Hasta 50 kg por bulto
+- Máximo 3 productos de la misma especie
+- Máximo 5 veces por año
+- Ideal para compras personales o variedad de productos
+
+CÁLCULO DE COSTOS (estimados orientativos):
+- Flete aéreo desde China: USD 5-12 por kg (según peso/volumen)
+- Flete marítimo: USD 1-3 por kg (más lento, 30-45 días)
+- Impuestos régimen simplificado: 50% sobre valor FOB + flete
+- Impuestos courier: 50% sobre valor CIF hasta USD 3.000
+- Siempre usá el dólar oficial para declaración aduanera
+
+PESO Y VOLUMEN - MUY IMPORTANTE:
+- Si el producto pesa más de 1 kg por unidad o es voluminoso (muebles, electrodomésticos grandes, etc.), advertí claramente que el costo de flete puede superar el valor del producto y no ser rentable
+- Calculá el costo de flete en relación al precio de venta esperado
+- Productos ideales para importar: livianos, alto valor por kg (electrónica pequeña, accesorios, joyería, textiles)
+- Productos con mal ratio peso/valor: muebles, herramientas pesadas, electrodomésticos grandes
+
+CERTIFICACIONES Y RESTRICCIONES:
+- Si el producto requiere certificación (electrónica con WiFi/Bluetooth → ENACOM, juguetes → IRAM, alimentos → SENASA, medicamentos → ANMAT, etc.), avisá claramente y recomendá contactar a Innovasmart para asesoría o a un despachante de aduana
+- Productos con intervención previa: armas, químicos, animales, plantas, medicamentos
+
+FORMATO DE RESPUESTA:
+- Sé claro, concreto y en argentino (usá "vos", "te", "$", "pesos")
+- Cuando calcules, mostrá el desglose completo con números
+- Si falta información, preguntá lo necesario antes de calcular
+- Siempre terminá con una recomendación accionable
+- Si el negocio no cierra en números, decilo honestamente
+
+${dolarInfo}`;
+
+    try {
+      const response = await fetch('https://importar-app.vercel.app/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: chatHistory, systemPrompt: systemPrompt })
+      });
+      const data = await response.json();
+      removeTypingIndicator();
+      const reply = data.reply || 'Hubo un error. Intentá de nuevo.';
+      chatHistory.push({ role: 'assistant', content: reply });
+      addImportMsg('bot', reply);
+    } catch(e) {
+      removeTypingIndicator();
+      addImportMsg('bot', 'No pude conectarme. Verificá tu conexión e intentá de nuevo.');
+    }
+  }
+</script>
 </body>
 </html>
