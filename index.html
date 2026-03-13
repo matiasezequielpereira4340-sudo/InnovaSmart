@@ -611,26 +611,14 @@ FORMATO DE RESPUESTA:
 ${dolarInfo}`;
 
     try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const response = await fetch('https://importar-app.vercel.app/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer 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',
-          'HTTP-Referer': 'https://matiasezequielpereira4340-sudo.github.io',
-          'X-Title': 'ImportAR - Innovasmart'
-        },
-        body: JSON.stringify({
-          model: 'meta-llama/llama-3.3-8b-instruct:free',
-          max_tokens: 1000,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...chatHistory
-          ]
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: chatHistory, systemPrompt: systemPrompt })
       });
       const data = await response.json();
       removeTypingIndicator();
-      const reply = data.choices?.[0]?.message?.content || 'Hubo un error. Intentá de nuevo.';
+      const reply = data.reply || 'Hubo un error. Intentá de nuevo.';
       chatHistory.push({ role: 'assistant', content: reply });
       addImportMsg('bot', reply);
     } catch(e) {
