@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://matiasezequielpereira4340-sudo.github.io/InnovaSmart/sitemap.xml
