@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Innovasmart — Importación, Mercado Libre e IA</title>
-<meta name="description" content="Innovasmart: formación y asesoría en importación desde China, ventas en Mercado Libre y construcción de herramientas con IA sin programar. Programas desde $69.900 y combos hasta el plan PREMIUM.">
-<meta name="keywords" content="importaciones argentina, importar de china, mercado libre, asesoría importación, herramientas con IA, apps sin programar, courier argentina, régimen simplificado">
+<meta name="description" content="Innovasmart: formación y asesoría en importación desde China, ventas en Mercado Libre, campañas de Meta Ads, gestión mensual de Google Ads, herramientas con IA sin programar y marketing y comunicación. Cursos grabados, asesorías 1 a 1 y combos.">
+<meta name="keywords" content="importaciones argentina, importar de china, mercado libre, asesoría importación, herramientas con IA, apps sin programar, courier argentina, régimen simplificado, meta ads, facebook ads, instagram ads, curso de meta ads, google ads, gestión de google ads, campañas de búsqueda, performance max, marketing y comunicación, agencia de marketing argentina">
 <meta name="author" content="Matías Ezequiel Pereira">
 <meta name="theme-color" content="#0A0A0A">
 <meta name="robots" content="index, follow">
@@ -553,6 +553,8 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
   <nav aria-label="Navegación móvil">
     <ul>
       <li><a href="#programas">Programas</a></li>
+      <li><a href="#programas" data-tab="tab-meta">Meta Ads</a></li>
+      <li><a href="#programas" data-tab="tab-google">Google Ads</a></li>
       <li><a href="#combos">Combos</a></li>
       <li><a href="#herramientas">Herramientas</a></li>
       <li><a href="#metodologia">Metodología</a></li>
@@ -589,6 +591,35 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
   </div>
 </section>
 
+<!--
+  ══════════ OPCIÓN B DEL HERO — POSICIONAMIENTO "AGENCIA" ══════════
+  No está activa. Es la variante para cuando decidas pasar de "Matías, mentor"
+  a "Innovasmart, agencia". Para aplicarla: borrá el bloque de hero que está
+  arriba (section id="hero") y descomentá este. Ojo: si la aplicás, revisá también la sección
+  "Quién soy" (#sobre-mi) y el JSON-LD del <head>, que hoy hablan en primera persona.
+
+<section id="hero">
+  <div class="hero-glow"></div>
+  <div class="hero-copy">
+    <p class="eyebrow">Cinco pilares, un mismo negocio</p>
+    <h1>Traelo, vendelo,<br>anuncialo.</h1>
+    <p class="lede">Innovasmart es la agencia que cubre el negocio entero: importás desde China con margen, vendés en Mercado Libre con estructura, pautás en Meta y Google, y automatizás con herramientas propias hechas con IA. Cada pilar se puede tomar suelto o combinado.</p>
+    <div class="hero-actions">
+      <a class="btn btn-accent" href="https://wa.me/5491160374306?text=Hola%2C%20quiero%20trabajar%20con%20Innovasmart.%20%C2%BFPor%20d%C3%B3nde%20arranco%3F" target="_blank" rel="noopener">
+        <svg width="16" height="16" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero empezar
+      </a>
+      <a class="btn btn-line" href="#programas">Ver los cinco pilares</a>
+    </div>
+  </div>
+  <div class="hero-media">
+    <div class="hero-frame">
+      <img src="ezequiel.png" alt="Matías Ezequiel Pereira, fundador de Innovasmart" width="600" height="700" fetchpriority="high" decoding="async">
+      <div class="hero-badge"><b>+200</b><span>clientes asesorados</span></div>
+    </div>
+  </div>
+</section>
+-->
+
 <!-- ══════════ PROGRAMAS ══════════ -->
 <section id="programas">
   <div class="wrap">
@@ -602,6 +633,8 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
       <button class="tab" type="button" role="tab" id="tab-imp" aria-controls="panel-imp" aria-selected="true" tabindex="0">Importación</button>
       <button class="tab" type="button" role="tab" id="tab-ml" aria-controls="panel-ml" aria-selected="false" tabindex="-1">Mercado Libre</button>
       <button class="tab" type="button" role="tab" id="tab-ia" aria-controls="panel-ia" aria-selected="false" tabindex="-1">Inteligencia Artificial</button>
+      <button class="tab" type="button" role="tab" id="tab-meta" aria-controls="panel-meta" aria-selected="false" tabindex="-1">Meta Ads</button>
+      <button class="tab" type="button" role="tab" id="tab-google" aria-controls="panel-google" aria-selected="false" tabindex="-1">Google Ads</button>
     </div>
 
     <!-- Panel Importación -->
@@ -700,15 +733,107 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
       </div>
     </div>
 
+
+    <!-- Panel Meta Ads -->
+    <div class="panel" id="panel-meta" role="tabpanel" aria-labelledby="tab-meta" tabindex="0" hidden>
+      <div class="card-grid">
+
+        <article class="card">
+          <span class="card-tag">Grabado</span>
+          <h3>Curso básico de Meta Ads</h3>
+          <p>Todo lo que hay que tener armado antes de poner plata: cuenta publicitaria y Business Manager, píxel y eventos midiendo bien, públicos, estructura de campaña, presupuesto y cómo leer las métricas que importan.</p>
+          <div class="price"><b>[PRECIO A DEFINIR]</b><span>pago único</span></div>
+          <p class="note-honest">Es para arrancar a pautar sin quemar presupuesto en la curva de aprendizaje. Si ya corrés campañas hace meses, este curso te va a quedar corto: andá al avanzado.</p>
+          <a class="btn btn-line btn-sm btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20el%20Curso%20b%C3%A1sico%20de%20Meta%20Ads." target="_blank" rel="noopener">
+            <svg width="15" height="15" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero el curso básico
+          </a>
+        </article>
+
+        <article class="card">
+          <span class="card-tag">Grabado</span>
+          <h3>Curso avanzado de Meta Ads</h3>
+          <p>Para el que ya pauta y se quedó en la meseta: estructura de cuenta y presupuesto (CBO y ABO), testeo de creativos en serie, públicos y exclusiones, retargeting y catálogo, API de Conversiones, atribución y cómo escalar sin que se dispare el costo por venta.</p>
+          <div class="price"><b>[PRECIO A DEFINIR]</b><span>pago único</span></div>
+          <p class="note-honest">Da por sabido lo del curso básico: píxel instalado, públicos armados y métricas leídas. Si eso todavía no lo tenés, empezá por el básico.</p>
+          <a class="btn btn-line btn-sm btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20el%20Curso%20avanzado%20de%20Meta%20Ads." target="_blank" rel="noopener">
+            <svg width="15" height="15" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero el curso avanzado
+          </a>
+        </article>
+
+        <article class="card">
+          <span class="card-tag">1 a 1</span>
+          <h3>Asesoría de Meta Ads</h3>
+          <p>Trabajo directo sobre tu cuenta: qué estás pagando hoy por cada venta, qué creativos aguantan, qué campañas hay que apagar y cómo escalar lo que sí funciona. Entramos juntos al administrador de anuncios.</p>
+          <div class="price"><b>[PRECIO A DEFINIR]</b><span>programa completo</span></div>
+          <ul class="req-list">
+            <li>El presupuesto de pauta lo ponés vos y va aparte: esto es el trabajo sobre la cuenta.</li>
+            <li>No hay cantidad fija de videollamadas: vamos al ritmo que la cuenta necesite.</li>
+            <li>Si la oferta o el margen no cierran, te lo digo antes de gastar un peso en anuncios.</li>
+          </ul>
+          <a class="btn btn-accent btn-sm btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20la%20Asesor%C3%ADa%20de%20Meta%20Ads." target="_blank" rel="noopener">
+            <svg width="15" height="15" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero la asesoría
+          </a>
+        </article>
+
+      </div>
+    </div>
+
+    <!-- Panel Google Ads -->
+    <div class="panel" id="panel-google" role="tabpanel" aria-labelledby="tab-google" tabindex="0" hidden>
+      <div class="card-grid">
+
+        <article class="card">
+          <span class="card-tag">Servicio mensual</span>
+          <h3>Gestión de Google Ads — Básico</h3>
+          <p>Armo y gestiono tus campañas de Búsqueda: palabras clave, anuncios, negativos y conversiones midiendo de verdad. Todos los meses revisamos qué se gastó, qué entró y qué se ajusta.</p>
+          <div class="price"><b>[PRECIO A DEFINIR]</b><span>por mes</span></div>
+          <p class="note-honest">Es un servicio recurrente, no un curso ni un pago único: se factura todos los meses y el presupuesto que le pagás a Google va aparte.</p>
+          <a class="btn btn-line btn-sm btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20la%20gesti%C3%B3n%20mensual%20de%20Google%20Ads%20%28plan%20b%C3%A1sico%29." target="_blank" rel="noopener">
+            <svg width="15" height="15" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero el plan básico
+          </a>
+        </article>
+
+        <article class="card">
+          <span class="card-tag">Servicio mensual</span>
+          <h3>Gestión de Google Ads — Full</h3>
+          <p>Búsqueda, Performance Max, YouTube y remarketing trabajando juntos. Optimización semanal, tests de anuncios y de landing, y el seguimiento de conversiones conectado a tu web o a tu operación de Mercado Libre.</p>
+          <div class="price"><b>[PRECIO A DEFINIR]</b><span>por mes</span></div>
+          <ul class="req-list">
+            <li>Servicio mensual: se factura todos los meses, igual que el básico.</li>
+            <li>El presupuesto de pauta va aparte y lo definís vos.</li>
+            <li>Los primeros resultados tardan: Google necesita datos de conversión antes de optimizar bien.</li>
+          </ul>
+          <a class="btn btn-accent btn-sm btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20la%20gesti%C3%B3n%20mensual%20de%20Google%20Ads%20%28plan%20full%29." target="_blank" rel="noopener">
+            <svg width="15" height="15" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero el plan full
+          </a>
+        </article>
+
+      </div>
+    </div>
+
     <!-- Servicios adicionales -->
     <div class="reveal" style="margin-top:56px">
       <p class="eyebrow">Servicios adicionales</p>
       <div class="card-grid" style="margin-top:20px">
         <article class="card">
-          <h3>Marketing Digital</h3>
-          <p>Gestión de redes, campañas en Meta Ads, producción de contenido y trabajo de marca. Para que los clientes lleguen de forma previsible y no por suerte.</p>
-          <a class="btn btn-line btn-sm btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20un%20presupuesto%20de%20Marketing%20Digital." target="_blank" rel="noopener">
-            <svg width="15" height="15" aria-hidden="true"><use href="#i-wa"></use></svg>Pedir presupuesto
+          <span class="card-tag">Plan básico</span>
+          <h3>Marketing y Comunicación</h3>
+          <p>Gestión de redes, calendario de contenido y trabajo de marca. Para que la marca publique con criterio y los clientes lleguen de forma previsible, no por suerte.</p>
+          <div class="price"><b>[PRECIO A DEFINIR]</b><span>por mes</span></div>
+          <p class="price-note">La pauta de Meta o Google, si la hay, se cotiza aparte en su propio módulo.</p>
+          <a class="btn btn-line btn-sm btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20el%20Plan%20b%C3%A1sico%20de%20Marketing%20y%20Comunicaci%C3%B3n." target="_blank" rel="noopener">
+            <svg width="15" height="15" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero el plan básico
+          </a>
+        </article>
+
+        <article class="card">
+          <span class="card-tag">1 a 1</span>
+          <h3>Asesoría de Marketing y Comunicación</h3>
+          <p>Trabajo sobre tu marca: qué comunicás, a quién le hablás y con qué. Salís con un plan de contenido y mensajes que podés ejecutar vos o pasarle a quien te maneje las redes.</p>
+          <div class="price"><b>[PRECIO A DEFINIR]</b><span>programa completo</span></div>
+          <p class="note-honest">No incluye la ejecución del contenido. Si querés que lo hagamos nosotros, eso es el plan básico de arriba.</p>
+          <a class="btn btn-accent btn-sm btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20la%20Asesor%C3%ADa%20de%20Marketing%20y%20Comunicaci%C3%B3n." target="_blank" rel="noopener">
+            <svg width="15" height="15" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero la asesoría
           </a>
         </article>
         <article class="card">
@@ -730,14 +855,14 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
     <div class="reveal">
       <p class="eyebrow">Combos</p>
       <h2>Dos o tres módulos juntos</h2>
-      <p class="lede">Comprados por separado suman más. Estos son los tres armados que más se piden.</p>
+      <p class="lede">Comprados por separado suman más. Estos son los cuatro armados que más se piden. Todos son de pago único: la gestión mensual de Google Ads no entra en combo, se factura por mes aparte.</p>
     </div>
 
     <div class="carousel" id="carousel" aria-roledescription="carrusel" aria-label="Combos de programas">
       <div class="viewport" id="viewport">
         <div class="track" id="track">
 
-          <div class="slide" role="group" aria-roledescription="diapositiva" aria-label="1 de 3: Importá y Vendé">
+          <div class="slide" role="group" aria-roledescription="diapositiva" aria-label="1 de 4: Importá y Vendé">
             <article class="combo">
               <div>
                 <h3>Importá y Vendé</h3>
@@ -758,7 +883,7 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
             </article>
           </div>
 
-          <div class="slide" role="group" aria-roledescription="diapositiva" aria-label="2 de 3: Importación + IA">
+          <div class="slide" role="group" aria-roledescription="diapositiva" aria-label="2 de 4: Importación + IA">
             <article class="combo">
               <div>
                 <h3>Importación&nbsp;+&nbsp;IA</h3>
@@ -779,7 +904,30 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
             </article>
           </div>
 
-          <div class="slide" role="group" aria-roledescription="diapositiva" aria-label="3 de 3: PREMIUM">
+
+          <div class="slide" role="group" aria-roledescription="diapositiva" aria-label="3 de 4: Importación + Meta Ads">
+            <article class="combo">
+              <div>
+                <h3>Importá&nbsp;y&nbsp;Anunciá</h3>
+                <p>Traés el producto desde China y lo ponés a vender con pauta. Un combo cierra el costo de entrada; el otro, el costo por venta. Son los dos números que definen si el negocio deja margen.</p>
+                <ul class="combo-includes">
+                  <li>Módulo de Importación completo, con acompañamiento</li>
+                  <li>Cursos de Meta Ads, básico y avanzado</li>
+                  <li>Asesoría sobre tu cuenta publicitaria hasta tener campañas midiendo</li>
+                  <li>El presupuesto de pauta lo ponés vos y va aparte</li>
+                </ul>
+              </div>
+              <div class="combo-side">
+                <div class="price"><b class="combo-price">[PRECIO A DEFINIR]</b></div>
+                <span style="display:block;color:var(--muted);font-size:.86rem;margin:10px 0 22px">Importación + Meta Ads</span>
+                <a class="btn btn-accent btn-block" href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20quiero%20el%20combo%20Import%C3%A1%20y%20Anunci%C3%A1%20%28Importaci%C3%B3n%20%2B%20Meta%20Ads%29." target="_blank" rel="noopener">
+                  <svg width="16" height="16" aria-hidden="true"><use href="#i-wa"></use></svg>Quiero este combo
+                </a>
+              </div>
+            </article>
+          </div>
+
+          <div class="slide" role="group" aria-roledescription="diapositiva" aria-label="4 de 4: PREMIUM">
             <article class="combo is-featured">
               <div>
                 <span class="ribbon">Recomendado</span>
@@ -1019,6 +1167,8 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
     </div>
     <nav class="footer-links" aria-label="Enlaces del pie">
       <a href="#programas">Programas</a>
+      <a href="#programas" data-tab="tab-meta">Meta Ads</a>
+      <a href="#programas" data-tab="tab-google">Google Ads</a>
       <a href="#combos">Combos</a>
       <a href="#herramientas">Herramientas</a>
       <a href="https://wa.me/5491160374306?text=Hola%20Mat%C3%ADas%2C%20te%20escribo%20desde%20la%20web%20de%20Innovasmart." target="_blank" rel="noopener">Contacto</a>
@@ -1106,6 +1256,28 @@ footer{padding:40px var(--gutter) 56px;border-top:1px solid var(--line);position
       if (on) panel.removeAttribute('hidden'); else panel.setAttribute('hidden','');
     });
   }
+  /* links del menú/footer que abren una pestaña concreta */
+  document.addEventListener('click', function(e){
+    var link = e.target.closest ? e.target.closest('[data-tab]') : null;
+    if (!link) return;
+    var t = document.getElementById(link.getAttribute('data-tab'));
+    if (t) selectTab(t);
+  });
+
+  /* deep links compartibles: .../#meta-ads y .../#google-ads */
+  var HASH_TABS = { '#meta-ads':'tab-meta', '#google-ads':'tab-google', '#importacion':'tab-imp', '#mercado-libre':'tab-ml', '#ia':'tab-ia' };
+  function applyHash(){
+    var id = HASH_TABS[window.location.hash];
+    if (!id) return;
+    var t = document.getElementById(id);
+    if (!t) return;
+    selectTab(t);
+    var sec = document.getElementById('programas');
+    if (sec) sec.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+  }
+  window.addEventListener('hashchange', applyHash);
+  applyHash();
+
   tabs.forEach(function(tab, i){
     tab.addEventListener('click', function(){ selectTab(tab); });
     tab.addEventListener('keydown', function(e){
