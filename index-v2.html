@@ -24,6 +24,50 @@
 <meta name="twitter:title" content="Innovasmart — Agencia de importación, Mercado Libre, IA y publicidad">
 <meta name="twitter:description" content="Innovasmart es la agencia de seis frentes: importación desde China, Mercado Libre, inteligencia artificial, Meta Ads, Google Ads, y marketing y comunicación. Cursos grabados, asesorías 1 a 1 y gestión mensual de campañas.">
 <meta name="twitter:image" content="https://matiasezequielpereira4340-sudo.github.io/InnovaSmart/img/og.webp">
+<!-- JSON-LD Schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ProfessionalService",
+  "name": "Innovasmart",
+  "description": "Agencia argentina de seis frentes: importación desde China, ventas en Mercado Libre, inteligencia artificial aplicada, campañas de Meta Ads, gestión mensual de Google Ads, y marketing y comunicación. Formación, asesoría 1 a 1 y servicios mensuales.",
+  "url": "https://matiasezequielpereira4340-sudo.github.io/InnovaSmart/",
+  "image": "https://matiasezequielpereira4340-sudo.github.io/InnovaSmart/img/og.webp",
+  "founder": { "@type": "Person", "name": "Mat\u00edas Ezequiel Pereira", "jobTitle": "Importador y mentor" },
+  "areaServed": { "@type": "Country", "name": "Argentina" },
+  "priceRange": "$$$",
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "sales",
+    "telephone": "+54-9-11-6037-4306",
+    "availableLanguage": "Spanish"
+  },
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "Programas Innovasmart",
+    "itemListElement": [
+      { "@type": "Offer", "name": "Curso de Importaci\u00f3n", "price": "69900", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Plan Inicial", "price": "269000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Asesor\u00eda 1 a 1 de Importaci\u00f3n", "price": "590000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Asesor\u00eda de Mercado Libre", "price": "550000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Asesor\u00eda de IA", "price": "690000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Meta Ads \u2014 Curso b\u00e1sico", "price": "49900", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Meta Ads \u2014 Curso avanzado", "price": "89900", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Asesor\u00eda de Meta Ads", "price": "420000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Google Ads \u2014 Gesti\u00f3n b\u00e1sica (mensual)", "price": "190000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Google Ads \u2014 Gesti\u00f3n full (mensual)", "price": "340000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Marketing y Comunicaci\u00f3n \u2014 Plan b\u00e1sico (mensual)", "price": "220000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Asesor\u00eda de Marketing y Comunicaci\u00f3n", "price": "390000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Combo Import\u00e1 y Vend\u00e9", "price": "990000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Combo Importaci\u00f3n + IA", "price": "1050000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Combo PREMIUM", "price": "1350000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Combo Vend\u00e9 y Anunci\u00e1", "price": "890000", "priceCurrency": "ARS" },
+      { "@type": "Offer", "name": "Combo Import\u00e1 y Traccion\u00e1", "price": "490000", "priceCurrency": "ARS" }
+    ]
+  }
+}
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
@@ -33,6 +77,7 @@
   --gris-txt:#8A8B8D; --gris-claro:#F6F6F6;
   --accent:#3EE0C4; --verde:#5FF971; --azul-soft:#8FCCFF;
   --max:1240px; --gut:clamp(18px,4.4vw,56px); --t:.25s ease;
+  --dolar-h:40px; /* la mide el JS: la barra envuelve en pantallas chicas */
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
@@ -254,18 +299,75 @@ h3{font-weight:600;font-size:1.12rem;line-height:1.3}
 .band p{margin-left:auto;margin-right:auto}
 
 /* ---------- FOOTER / TOP ---------- */
-footer{border-top:1px solid var(--borde);padding:56px 0 46px;margin-top:0}
+footer{border-top:1px solid var(--borde);padding:56px 0 calc(var(--dolar-h) + 46px);margin-top:0}
 .ft{display:grid;grid-template-columns:1.2fr 1fr;gap:34px}
 .ft-links{display:flex;flex-wrap:wrap;gap:14px 26px;align-content:flex-start}
 .ft-links a{font-size:14px;color:var(--gris-txt);transition:color var(--t)}
 .ft-links a:hover{color:var(--accent)}
 .ft-c{font-size:13px;color:#5c5e60;margin-top:14px}
-.top{position:fixed;right:18px;bottom:18px;z-index:100;width:48px;height:48px;border-radius:999px;
+.top{position:fixed;right:20px;bottom:calc(var(--dolar-h) + 72px);z-index:104;width:48px;height:48px;border-radius:999px;
   border:1px solid var(--borde);background:rgba(0,0,0,.8);color:var(--blanco);cursor:pointer;
   display:flex;align-items:center;justify-content:center;font-size:18px;
   opacity:0;pointer-events:none;transition:opacity var(--t),background var(--t),color var(--t)}
 .top.on{opacity:1;pointer-events:auto}
 .top:hover{background:var(--blanco);color:#000}
+
+/* ---------- WIDGET DOLAR ---------- */
+#dolar-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:8px var(--gut);background:rgba(0,0,0,.97);
+  border-top:1px solid var(--borde);font-size:12.5px;line-height:1.5}
+.dolar-tag{font-size:10.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent);flex-shrink:0}
+#dolar-values{display:flex;gap:14px;flex-wrap:wrap;color:var(--blanco)}
+#dolar-values i{font-style:normal;color:var(--accent);margin-right:5px}
+#dolar-time{margin-left:auto;color:var(--gris-txt);font-size:11.5px;flex-shrink:0}
+
+/* ---------- WIDGET IMPORTAR ---------- */
+#importar-toggle{position:fixed;right:20px;bottom:calc(var(--dolar-h) + 12px);z-index:105;
+  display:flex;align-items:center;gap:9px;cursor:pointer;
+  background:var(--accent);color:#000;border:0;border-radius:999px;
+  padding:12px 20px;font-family:inherit;font-weight:700;font-size:14px;letter-spacing:.01em;
+  box-shadow:0 6px 26px rgba(62,224,196,.24);transition:transform var(--t),box-shadow var(--t)}
+#importar-toggle:hover{transform:translateY(-2px);box-shadow:0 10px 32px rgba(62,224,196,.32)}
+#importar-panel{position:fixed;right:20px;bottom:calc(var(--dolar-h) + 132px);z-index:106;
+  width:370px;max-width:calc(100vw - 40px);
+  height:520px;max-height:calc(100svh - var(--dolar-h) - 200px);
+  background:var(--negro-2);border:1px solid var(--borde);border-radius:12px;
+  display:none;flex-direction:column;overflow:hidden;
+  box-shadow:0 26px 60px rgba(0,0,0,.65)}
+#importar-panel.is-open{display:flex}
+.ia-head{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 16px;background:#1F1F1F;border-bottom:1px solid var(--borde)}
+.ia-head .t{font-weight:700;font-size:15px;letter-spacing:-.01em;line-height:1.3}
+.ia-head .s{font-size:11.5px;color:var(--accent);line-height:1.4}
+.ia-close{background:transparent;border:0;color:var(--gris-txt);cursor:pointer;
+  font-size:17px;line-height:1;padding:6px 8px;border-radius:4px}
+.ia-close:hover{color:var(--blanco)}
+#ia-dolar{padding:7px 16px;border-bottom:1px solid var(--borde);font-size:11.5px;
+  color:var(--gris-txt);display:flex;gap:12px;flex-wrap:wrap}
+#ia-dolar i{font-style:normal;color:var(--accent);margin-right:4px}
+#ia-messages{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+#ia-messages::-webkit-scrollbar{width:4px}
+#ia-messages::-webkit-scrollbar-thumb{background:rgba(62,224,196,.35);border-radius:2px}
+.ia-row{display:flex}
+.ia-row.bot{justify-content:flex-start}
+.ia-row.user{justify-content:flex-end}
+.ia-bubble{max-width:88%;padding:10px 13px;font-size:14px;line-height:1.6;white-space:pre-wrap;
+  word-break:break-word;border-radius:4px 11px 11px 11px;background:#1F1F1F;border:1px solid var(--borde)}
+.ia-row.user .ia-bubble{border-radius:11px 4px 11px 11px;background:var(--accent);color:#000;
+  border-color:transparent;font-weight:400}
+.ia-form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--borde);background:var(--negro)}
+.ia-form input{flex:1;min-width:0;background:#1F1F1F;border:1px solid var(--borde);border-radius:6px;
+  padding:10px 12px;color:var(--blanco);font-family:inherit;font-size:14px}
+.ia-form input::placeholder{color:var(--gris-txt)}
+.ia-form button{width:40px;height:40px;flex-shrink:0;border:0;border-radius:6px;background:var(--accent);
+  color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--accent);
+  animation:blink 1s infinite}
+.typing span:nth-child(2){animation-delay:.25s}
+.typing span:nth-child(3){animation-delay:.5s}
+@keyframes blink{0%,100%{opacity:.2}50%{opacity:1}}
 
 .pad{padding:clamp(56px,8vw,118px) 0}
 .pad-s{padding:clamp(34px,5vw,64px) 0}
@@ -286,6 +388,10 @@ footer{border-top:1px solid var(--borde);padding:56px 0 46px;margin-top:0}
 }
 @media(max-width:520px){
   body{font-size:16px}
+  #importar-toggle{right:14px;width:48px;height:48px;padding:0;justify-content:center;border-radius:50%}
+  #importar-toggle .lbl{display:none}
+  #importar-panel{right:14px;left:14px;width:auto}
+  .top{right:14px}
   .h-act .btn{flex:1 1 100%;justify-content:center}
   .h-badge{margin-left:0}
   .cta-s .big-ar{font-size:40px}
@@ -504,6 +610,38 @@ footer{border-top:1px solid var(--borde);padding:56px 0 46px;margin-top:0}
 
 <button class="top" id="top-btn" type="button" aria-label="Volver arriba">&#8593;</button>
 
+<!-- ========== WIDGET DOLAR ========== -->
+<div id="dolar-bar" role="region" aria-label="Cotización del dólar hoy">
+  <span class="dolar-tag">Dólar hoy</span>
+  <div id="dolar-values" aria-live="polite"><span style="color:var(--gris-txt)">Cargando…</span></div>
+  <span id="dolar-time"></span>
+</div>
+
+<!-- ========== WIDGET IMPORTAR ========== -->
+<button id="importar-toggle" type="button" aria-expanded="false" aria-controls="importar-panel" aria-label="Abrir ImportAR, la calculadora de importación">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <span class="lbl">ImportAR</span>
+</button>
+
+<div id="importar-panel" role="dialog" aria-label="ImportAR, calculadora de importación">
+  <div class="ia-head">
+    <div>
+      <div class="t">ImportAR</div>
+      <div class="s">Calculadora de costos · Innovasmart</div>
+    </div>
+    <button class="ia-close" type="button" id="ia-close" aria-label="Cerrar ImportAR">✕</button>
+  </div>
+  <div id="ia-dolar"></div>
+  <div id="ia-messages" aria-live="polite"></div>
+  <form class="ia-form" id="ia-form">
+    <label for="ia-input" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Consulta para ImportAR</label>
+    <input id="ia-input" type="text" autocomplete="off" placeholder="Ej: 100 auriculares a USD 5 c/u desde China">
+    <button type="submit" aria-label="Enviar consulta">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </form>
+</div>
+
 <script>
 (function(){
   'use strict';
@@ -633,6 +771,137 @@ footer{border-top:1px solid var(--borde);padding:56px 0 46px;margin-top:0}
     }, {threshold:.5});
     counters.forEach(function(el){ co.observe(el); });
   }
+})();
+</script>
+
+<script>
+/* ───────── DÓLAR HOY ───────── */
+window.dolarData = {};
+(function(){
+  var LABELS = { oficial:'Oficial', blue:'Blue', mep:'MEP', cripto:'Cripto' };
+  function render(list){
+    var html = list.map(function(d){
+      return '<span><i>' + LABELS[d.casa] + '</i>$' + (d.venta || 0).toLocaleString('es-AR') + '</span>';
+    }).join('');
+    document.getElementById('dolar-values').innerHTML = html;
+    var strip = document.getElementById('ia-dolar');
+    if (strip) strip.innerHTML = html;
+  }
+  function fetchDolar(){
+    fetch('https://dolarapi.com/v1/dolares')
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        var list = data.filter(function(d){ return LABELS[d.casa]; });
+        list.forEach(function(d){ window.dolarData[d.casa] = d.venta; });
+        render(list);
+        var n = new Date();
+        document.getElementById('dolar-time').textContent =
+          'Act. ' + n.getHours() + ':' + String(n.getMinutes()).padStart(2,'0');
+      })
+      .catch(function(){
+        document.getElementById('dolar-values').innerHTML = '<span style="color:var(--dim)">No disponible</span>';
+      });
+  }
+  /* la barra envuelve segun el ancho: publicamos su alto real para que
+     el boton de ImportAR y el de volver arriba se apilen encima sin pisarla */
+  function medirBarra(){
+    var b = document.getElementById('dolar-bar');
+    if (b) document.documentElement.style.setProperty('--dolar-h', b.offsetHeight + 'px');
+  }
+  medirBarra();
+  window.addEventListener('resize', medirBarra);
+  if (window.ResizeObserver){
+    new ResizeObserver(medirBarra).observe(document.getElementById('dolar-bar'));
+  }
+  fetchDolar();
+  setInterval(fetchDolar, 5 * 60 * 1000);
+})();
+
+/* ───────── IMPORTAR: CALCULADORA ───────── */
+(function(){
+  var toggle = document.getElementById('importar-toggle');
+  var panel  = document.getElementById('importar-panel');
+  var msgs   = document.getElementById('ia-messages');
+  var form   = document.getElementById('ia-form');
+  var input  = document.getElementById('ia-input');
+  var open = false, started = false, history = [];
+
+  function setOpen(v){
+    open = v;
+    panel.classList.toggle('is-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open && !started){
+      started = true;
+      add('bot', '¡Hola! Soy ImportAR.\n\nTe calculo cuánto te sale traer un producto desde China a Argentina, con el dólar de hoy.\n\nContame:\n• Qué producto querés importar\n• Cuánto cuesta en USD por unidad\n• Qué cantidad querés traer\n• Cuánto pesa aproximadamente cada unidad');
+    }
+    if (open) setTimeout(function(){ input.focus(); }, 80);
+  }
+  toggle.addEventListener('click', function(){ setOpen(!open); });
+  document.getElementById('ia-close').addEventListener('click', function(){ setOpen(false); toggle.focus(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && open){ setOpen(false); toggle.focus(); } });
+
+  function add(role, text){
+    var row = document.createElement('div');
+    row.className = 'ia-row ' + (role === 'bot' ? 'bot' : 'user');
+    var b = document.createElement('div');
+    b.className = 'ia-bubble';
+    b.textContent = text;
+    row.appendChild(b);
+    msgs.appendChild(row);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  function typingOn(){
+    var row = document.createElement('div');
+    row.className = 'ia-row bot';
+    row.id = 'ia-typing';
+    row.innerHTML = '<div class="ia-bubble typing" style="display:flex;gap:5px;align-items:center"><span></span><span></span><span></span></div>';
+    msgs.appendChild(row);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  function typingOff(){ var t = document.getElementById('ia-typing'); if (t) t.remove(); }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    add('user', text);
+    history.push({ role:'user', content:text });
+    typingOn();
+
+    var d = window.dolarData;
+    var dolarInfo = d.oficial
+      ? 'Cotizaciones actuales (venta): Oficial $' + d.oficial.toLocaleString('es-AR') +
+        ', Blue $' + (d.blue || 0).toLocaleString('es-AR') +
+        ', MEP $' + (d.mep || 0).toLocaleString('es-AR')
+      : 'Cotización no disponible en este momento, usá un valor aproximado.';
+
+    var systemPrompt = 'Sos ImportAR, el asistente de cálculo de importaciones de Innovasmart, creado por Matías Ezequiel Pereira. Tu función es ayudar a calcular costos de importar productos desde China a Argentina y asesorar sobre regímenes aduaneros.\n\n' +
+'REGÍMENES ADUANEROS ARGENTINOS (explicá la diferencia cuando sea relevante):\n\n' +
+'RÉGIMEN SIMPLIFICADO:\n- Hasta USD 3.000 por envío\n- Hasta 50 kg por bulto\n- SIN límite de veces al año\n- SIN límite de cantidad de productos de la misma especie\n- Ideal para importar volumen de un mismo producto de forma recurrente\n\n' +
+'RÉGIMEN COURIER / PUERTA A PUERTA:\n- Hasta USD 3.000 por envío\n- Hasta 50 kg por bulto\n- Máximo 3 productos de la misma especie\n- Máximo 5 veces por año\n- Ideal para compras personales o variedad de productos\n\n' +
+'CÁLCULO DE COSTOS (estimados orientativos):\n- Flete aéreo desde China: USD 5-12 por kg (según peso/volumen)\n- Flete marítimo: USD 1-3 por kg (más lento, 30-45 días)\n- Impuestos régimen simplificado: 50% sobre valor FOB + flete\n- Impuestos courier: 50% sobre valor CIF hasta USD 3.000\n- Siempre usá el dólar oficial para declaración aduanera\n\n' +
+'PESO Y VOLUMEN - MUY IMPORTANTE:\n- Si el producto pesa más de 1 kg por unidad o es voluminoso (muebles, electrodomésticos grandes, etc.), advertí claramente que el costo de flete puede superar el valor del producto y no ser rentable\n- Calculá el costo de flete en relación al precio de venta esperado\n- Productos ideales para importar: livianos, alto valor por kg (electrónica pequeña, accesorios, joyería, textiles)\n- Productos con mal ratio peso/valor: muebles, herramientas pesadas, electrodomésticos grandes\n\n' +
+'CERTIFICACIONES Y RESTRICCIONES:\n- Si el producto requiere certificación (electrónica con WiFi/Bluetooth → ENACOM, juguetes → IRAM, alimentos → SENASA, medicamentos → ANMAT, etc.), avisá claramente y recomendá contactar a Innovasmart para asesoría o a un despachante de aduana\n- Productos con intervención previa: armas, químicos, animales, plantas, medicamentos\n\n' +
+'FORMATO DE RESPUESTA:\n- Sé claro, concreto y en argentino (usá "vos", "te", "$", "pesos")\n- Cuando calcules, mostrá el desglose completo con números\n- Si falta información, preguntá lo necesario antes de calcular\n- Siempre terminá con una recomendación accionable\n- Si el negocio no cierra en números, decilo honestamente\n\n' + dolarInfo;
+
+    fetch('https://importar-app.vercel.app/api/chat', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ messages: history, systemPrompt: systemPrompt })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      typingOff();
+      var reply = data.reply || 'Hubo un error. Intentá de nuevo.';
+      history.push({ role:'assistant', content:reply });
+      add('bot', reply);
+    })
+    .catch(function(){
+      typingOff();
+      add('bot', 'No pude conectarme. Revisá tu conexión e intentá de nuevo.');
+    });
+  });
 })();
 </script>
 </body>
