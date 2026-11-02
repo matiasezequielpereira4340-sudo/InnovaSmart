@@ -10,7 +10,7 @@ fs.mkdirSync(out, { recursive: true });
 
 const browser = await chromium.launch();
 const errors = [];
-async function shot(name, url, { mobile = false, full = true, before } = {}) {
+async function shot(name, url, { mobile = false, full = true, before, scrollTo } = {}) {
   const ctx = await browser.newContext(mobile
     ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'es-AR' }
     : { viewport: { width: 1366, height: 900 }, deviceScaleFactor: 1, locale: 'es-AR' });
@@ -20,6 +20,7 @@ async function shot(name, url, { mobile = false, full = true, before } = {}) {
   await page.goto(base + url, { waitUntil: 'networkidle' });
   if (before) await before(page);
   await page.evaluate(() => window.scrollTo(0, 0));
+  if (scrollTo) await page.evaluate((sel) => document.querySelector(sel)?.scrollIntoView(), scrollTo);
   await page.waitForTimeout(400);
   // sin scroll horizontal
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -44,6 +45,9 @@ await shot('07-alertas-demo', '/demo#/alertas');
 await shot('08-email-alerta', '/api/email-preview?type=daily', { mobile: true });
 await shot('09-email-semanal', '/api/email-preview?type=weekly', { mobile: true });
 await shot('10-admin', '/admin?demo=1');
+await shot('12-validacion-demo-desktop', '/admin?demo=1#validacion');
+await shot('13-validacion-demo-celular', '/admin?demo=1#validacion', { mobile: true, full: false });
+await shot('14-validacion-demo-celular-venta', '/admin?demo=1#validacion', { mobile: true, full: false, before: async (p) => { await p.waitForSelector('article'); } , scrollTo: 'article:nth-of-type(2)' });
 await shot('11-landing-error-config', '/?error=config', { mobile: true, full: false });
 await browser.close();
 if (errors.length) { console.log('PROBLEMAS:\n' + errors.join('\n')); process.exitCode = 1; } else console.log('Sin errores de consola.');

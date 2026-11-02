@@ -387,3 +387,4 @@ select.btn { appearance: auto; font-family: var(--font-body); }
   .kpi:nth-child(n + 3) { border-bottom: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+a.chip { text-decoration: none; }

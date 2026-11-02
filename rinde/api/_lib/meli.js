@@ -3,6 +3,7 @@
 import { db } from './db.js';
 import { encrypt, decrypt } from './crypto.js';
 import { AppError } from './http.js';
+import { parseBilling } from '../../shared/billing.js';
 
 const API = 'https://api.mercadolibre.com';
 export const AUTH_URL = 'https://auth.mercadolibre.com.ar/authorization';
@@ -227,36 +228,44 @@ export async function getOrdersPage(t, sellerId, fromIso, offset) {
 }
 
 /**
- * FACTURACIÓN: cargos reales por venta (comisión, envío, financiación, impuestos si los trae).
- * Endpoint de detalle por orden de Billing Reports. Devuelve null si no hay dato todavía.
+ * GET crudo: no tira error, devuelve { status, body, ms }. Para la Validación y para probar formatos.
  */
-export async function getBillingForOrder(t, orderId) {
-  const d = await meliGet(t, `/billing/integration/group/ML/order/details?order_ids=${orderId}`, { allow404: true, retries: 1 });
-  const rows = d?.results || d?.data || (Array.isArray(d) ? d : []);
-  if (!rows.length) return null;
-  const fees = { commission: 0, shipping: 0, financing: 0, taxes: 0, other: 0 };
-  let found = false;
-  const walk = (node) => {
-    if (!node || typeof node !== 'object') return;
-    if (Array.isArray(node)) return node.forEach(walk);
-    const ci = node.charge_info || node;
-    const amount = Number(ci.detail_amount ?? ci.amount ?? NaN);
-    const label = `${ci.detail_sub_type || ''} ${ci.transaction_detail || ci.detail_type || ''}`.toLowerCase();
-    if (!Number.isNaN(amount) && label.trim() && ci !== node.sales_info) {
-      found = true;
-      const isBonus = /bonus|bonif/.test(String(ci.detail_type || '').toLowerCase());
-      const v = isBonus ? -Math.abs(amount) : Math.abs(amount);
-      if (/env[ií]o|shipping|flete/.test(label)) fees.shipping += v;
-      else if (/cuota|financ|installment/.test(label)) fees.financing += v;
-      else if (/impuest|retenc|percep|iibb|iva|tax|ganancias/.test(label)) fees.taxes += v;
-      else if (/venta|cv|comisi|cargo por/.test(label)) fees.commission += v;
-      else fees.other += v;
-      return;
+export async function meliRaw(token, path, headers = {}) {
+  const t0 = Date.now();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...headers } });
+      if (r.status === 429 && attempt < 2) { await sleep(1000 * (attempt + 1)); continue; }
+      const text = await r.text();
+      let body;
+      try { body = text ? JSON.parse(text) : null; } catch { body = { _texto_no_json: text.slice(0, 500) }; }
+      return { status: r.status, body, ms: Date.now() - t0 };
+    } catch (e) {
+      if (attempt === 2) return { status: 0, body: { _error: 'Mercado Libre no respondió' }, ms: Date.now() - t0 };
+      await sleep(800);
     }
-    for (const k of Object.keys(node)) if (typeof node[k] === 'object') walk(node[k]);
-  };
-  walk(rows);
-  return found ? fees : null;
+  }
+}
+
+/**
+ * FACTURACIÓN cruda de una venta. Prueba primero ?order_ids= y, si no trae nada, ?order_id=
+ * (la documentación de MeLi muestra las dos formas).
+ */
+export async function getBillingRaw(t, orderId) {
+  const a = await meliRaw(t, `/billing/integration/group/ML/order/details?order_ids=${orderId}`);
+  const has = (x) => x.status === 200 && x.body && (Array.isArray(x.body.results) ? x.body.results.length > 0 : true);
+  if (has(a)) return { ...a, param: 'order_ids' };
+  const b = await meliRaw(t, `/billing/integration/group/ML/order/details?order_id=${orderId}`);
+  if (has(b)) return { ...b, param: 'order_id' };
+  return { ...(a.status === 200 ? a : b), param: null, tried: [{ param: 'order_ids', status: a.status }, { param: 'order_id', status: b.status }] };
+}
+
+/** Cargos reales por venta según la facturación. null si todavía no hay dato legible. */
+export async function getBillingForOrder(t, orderId) {
+  const raw = await getBillingRaw(t, orderId);
+  if (raw.status !== 200) return null;
+  const parsed = parseBilling(raw.body);
+  return parsed.lines.length ? parsed.fees : null;
 }
 
 /** Costo de envío a cargo del vendedor (respaldo cuando la facturación no trae el dato). */
