@@ -50,6 +50,15 @@ await shot('13-validacion-demo-celular', '/admin?demo=1#validacion', { mobile: t
 await shot('14-validacion-demo-celular-venta', '/admin?demo=1#validacion', { mobile: true, full: false, before: async (p) => { await p.waitForSelector('article'); } , scrollTo: 'article:nth-of-type(2)' });
 await shot('15-conexiones-desktop', '/admin?demo=1#conexiones');
 await shot('16-conexiones-celular', '/admin?demo=1#conexiones', { mobile: true });
+await shot('20-precios-desktop', '/', { full: false, scrollTo: '#precios' });
+await shot('21-precios-celular', '/', { mobile: true, full: false, scrollTo: '#precios' });
+await shot('22-checkout-tarjeta-desktop', '/suscribirme?demo=1');
+await shot('23-checkout-tarjeta-celular', '/suscribirme?demo=1', { mobile: true });
+await shot('24-checkout-transferencia-celular', '/suscribirme?demo=1&metodo=transferencia&plan=annual', { mobile: true });
+await shot('25-admin-cobros-desktop', '/admin?demo=1#cobros');
+await shot('26-admin-pagos-desktop', '/admin?demo=1#pagos');
+await shot('27-admin-pagos-celular', '/admin?demo=1#pagos', { mobile: true });
+await shot('28-admin-usuarios-desktop', '/admin?demo=1');
 await shot('11-landing-error-config', '/?error=config', { mobile: true, full: false });
 await browser.close();
 if (errors.length) { console.log('PROBLEMAS:\n' + errors.join('\n')); process.exitCode = 1; } else console.log('Sin errores de consola.');

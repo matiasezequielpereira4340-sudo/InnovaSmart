@@ -7,6 +7,11 @@ import { getAccessToken, meliRaw, getBillingRaw, pool } from './_lib/meli.js';
 import { buildValidationReport, scrub } from '../shared/validation.js';
 import { runHealth } from './_lib/health.js';
 import { sha256 } from './_lib/crypto.js';
+import { getBillingConfig, saveBillingConfig, activateTransfer } from './_lib/mp.js';
+import { mergeBilling } from '../shared/plans.js';
+
+const yearStartAR = () => new Date(`${new Date(Date.now() - 3 * 3600000).getUTCFullYear()}-01-01T00:00:00-03:00`).toISOString();
+const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
 // ── Límite de intentos: 5 fallidos en 15 min bloquean esa IP por 15 min. ──
 const MAX_FAILS = 5;
@@ -76,6 +81,25 @@ export default handler(async (req, res) => {
 
   if (req.method === 'GET' && q.view === 'health') return json(res, 200, await runHealth());
 
+  if (req.method === 'GET' && q.view === 'billing') return json(res, 200, { config: await getBillingConfig() });
+
+  if (req.method === 'GET' && q.view === 'payments') {
+    const all = await db.select('rinde_payments', {}, { order: 'paid_at.desc', limit: 5000 });
+    const ys = yearStartAR();
+    const year = all.filter((p) => p.status === 'approved' && p.paid_at >= ys);
+    const yearTotal = year.reduce((t, p) => t + Number(p.amount || 0), 0);
+    const list = q.filter === 'todos' ? all : all.filter((p) => !p.invoiced_at);
+    if (q.format === 'csv') {
+      const rows = [['cliente', 'email', 'documento', 'monto', 'fecha', 'medio', 'plan', 'facturado'].join(';'),
+        ...list.map((p) => [p.customer_name, p.customer_email, p.customer_doc, String(p.amount).replace('.', ','), new Date(p.paid_at).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' }), p.source === 'mp' ? 'Mercado Pago' : 'Transferencia', p.plan_interval === 'annual' ? 'Anual' : 'Mensual', p.invoiced_at ? 'sí' : 'no'].map(csvCell).join(';'))];
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="rinde-pagos.csv"');
+      return res.end('\uFEFF' + rows.join('\n'));
+    }
+    return json(res, 200, { payments: list, yearTotal, yearCount: year.length, pending: all.filter((p) => !p.invoiced_at).length });
+  }
+
   if (req.method === 'GET' && q.view === 'validation') {
     if (!q.user_id) throw new AppError(400, 'Falta elegir el usuario.');
     const last = await db.one('rinde_validation_runs', { user_id: q.user_id }, { order: 'created_at.desc' });
@@ -84,7 +108,7 @@ export default handler(async (req, res) => {
 
   if (req.method === 'GET') {
     const [users, conns] = await Promise.all([
-      db.select('rinde_users', {}, { columns: 'id,meli_user_id,nickname,plan,created_at,plan_activated_at,free_diagnosis_used_at,last_login_at,alert_email', order: 'created_at.desc', limit: 1000 }),
+      db.select('rinde_users', {}, { columns: 'id,meli_user_id,nickname,plan,created_at,plan_activated_at,free_diagnosis_used_at,last_login_at,alert_email,billing_email,plan_interval,plan_expires_at,billing_status,grace_until,payment_method', order: 'created_at.desc', limit: 1000 }),
       db.select('rinde_connections', {}, { columns: 'user_id,updated_at' }),
     ]);
     const connected = new Set(conns.map((c) => c.user_id));
@@ -93,6 +117,28 @@ export default handler(async (req, res) => {
 
   if (req.method === 'POST') {
     const body = await readBody(req);
+    if (body.action === 'billing_config') {
+      const c = mergeBilling(body.config);
+      const n = (v) => Math.round(Number(String(v).replace(/[^0-9.]/g, '')));
+      c.monthly_price = n(c.monthly_price);
+      c.annual_price = n(c.annual_price);
+      c.trial_days = Math.max(0, Math.min(30, n(c.trial_days)));
+      if (!(c.monthly_price > 0) || !(c.annual_price > 0)) throw new AppError(400, 'Los precios tienen que ser mayores a cero.');
+      if (c.annual_valid_until && !/^\d{4}-\d{2}-\d{2}$/.test(c.annual_valid_until)) throw new AppError(400, 'La fecha tiene que ser AAAA-MM-DD.');
+      await saveBillingConfig(c);
+      return json(res, 200, { ok: true, config: c });
+    }
+    if (body.action === 'transfer') {
+      const user = await db.one('rinde_users', { id: body.user_id });
+      if (!user) throw new AppError(404, 'No existe ese usuario.');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.until || '')) throw new AppError(400, 'Elegí la fecha de vencimiento.');
+      const u2 = await activateTransfer(user, { interval: body.interval === 'annual' ? 'annual' : 'monthly', until: body.until, amount: body.amount, note: body.note });
+      return json(res, 200, { ok: true, user: u2 });
+    }
+    if (body.action === 'invoiced') {
+      const [p] = await db.update('rinde_payments', { id: body.payment_id }, { invoiced_at: body.value === false ? null : new Date().toISOString() });
+      return json(res, 200, { ok: true, payment: p });
+    }
     if (body.action === 'validate') {
       const user = await db.one('rinde_users', { id: body.user_id });
       if (!user) throw new AppError(404, 'No existe ese usuario.');
@@ -101,7 +147,9 @@ export default handler(async (req, res) => {
     }
     const { user_id, plan } = body;
     if (!user_id || !['free', 'rinde'].includes(plan)) throw new AppError(400, 'Pedido inválido.');
-    const [u] = await db.update('rinde_users', { id: user_id }, { plan, plan_activated_at: plan === 'rinde' ? new Date().toISOString() : null });
+    const [u] = await db.update('rinde_users', { id: user_id }, plan === 'rinde'
+      ? { plan, plan_activated_at: new Date().toISOString() }
+      : { plan, billing_status: 'canceled', grace_until: null });
     return json(res, 200, { ok: true, user: u });
   }
   throw new AppError(405, 'Método no permitido.');

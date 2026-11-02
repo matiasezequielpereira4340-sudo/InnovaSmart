@@ -6,7 +6,8 @@ import { AUTH_URL, exchangeCode, getMe, saveTokens } from './_lib/meli.js';
 import { db } from './_lib/db.js';
 
 export default handler(async (req, res) => {
-  const { action, code, state, error } = query(req);
+  const { action, code, state, error, next } = query(req);
+  const safeNext = (n) => (typeof n === 'string' && !n.startsWith('//') && /^\/[a-z0-9/_-]*$/i.test(n) ? n : '');
 
   if (action === 'login') {
     try {
@@ -16,7 +17,7 @@ export default handler(async (req, res) => {
     }
     const st = randomToken(16);
     const verifier = randomToken(48);
-    appendCookie(res, cookie('rinde_oauth', sign(`${st}|${verifier}`), { maxAge: 600 }));
+    appendCookie(res, cookie('rinde_oauth', sign(`${st}|${verifier}|${safeNext(next)}`), { maxAge: 600 }));
     const u = new URL(AUTH_URL);
     u.search = new URLSearchParams({
       response_type: 'code',
@@ -32,7 +33,7 @@ export default handler(async (req, res) => {
   if (action === 'callback') {
     if (error) return redirect(res, '/?error=cancelado');
     const raw = unsign(parseCookies(req).rinde_oauth);
-    const [st, verifier] = (raw || '').split('|');
+    const [st, verifier, nextPath] = (raw || '').split('|');
     if (!st || st !== state || !code) return redirect(res, '/?error=estado');
     appendCookie(res, cookie('rinde_oauth', '', { maxAge: 0 }));
     try {
@@ -44,7 +45,7 @@ export default handler(async (req, res) => {
       if (!user.alert_email && me.email) await db.update('rinde_users', { id: user.id }, { alert_email: me.email });
       await saveTokens(user.id, tokens);
       setSession(res, user.id);
-      return redirect(res, '/app#/conectando');
+      return redirect(res, safeNext(nextPath) || '/app#/conectando');
     } catch (e) {
       console.error('[rinde][auth]', e);
       return redirect(res, '/?error=meli');

@@ -1,6 +1,7 @@
 import { AppError } from './http.js';
 import { db } from './db.js';
 import { requireSession } from './session.js';
+import { billingSummary } from '../../shared/plans.js';
 
 export const isPaid = (u) => u?.plan === 'rinde';
 
@@ -28,5 +29,6 @@ export function publicUser(u) {
     weekly_enabled: u.weekly_enabled !== false,
     ads_manual_monthly: s.ads_manual_monthly || 0,
     meta_ads_monthly: s.meta_ads_monthly || 0,
+    billing: billingSummary(u),
   };
 }

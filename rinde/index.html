@@ -103,7 +103,7 @@
 
   <section class="section section-alt" id="precios">
     <div class="wrap">
-      <div class="section-head"><h2>Precios</h2><p class="lead">Probalo gratis. Si te sirve, seguís con el Plan Rinde.</p></div>
+      <div class="section-head"><h2>Precios</h2><p class="lead">Arrancá con el diagnóstico gratis. Si te sirve, seguís con el Plan Rinde.</p></div>
       <div class="prices">
         <div class="card price">
           <h3>Gratis</h3>
@@ -119,8 +119,8 @@
         </div>
         <div class="card price featured">
           <span class="badge-top">Recomendado</span>
-          <h3>Plan Rinde</h3>
-          <div class="amount">$15.000 <span class="small muted">/ mes</span></div>
+          <h3>Mensual</h3>
+          <div class="amount"><span data-price="monthly">$15.000</span> <span class="small muted">/ mes</span></div>
           <ul>
             <li><i data-i="check"></i> Diagnóstico ilimitado, cuando quieras</li>
             <li><i data-i="check"></i> Rentabilidad real por producto y por venta</li>
@@ -128,8 +128,20 @@
             <li><i data-i="check"></i> Precio mínimo sin pérdida y precio sugerido</li>
             <li><i data-i="check"></i> Alertas diarias por email y resumen de los lunes</li>
           </ul>
-          <a class="btn btn-primary btn-block" data-wa="subscribe" href="#">Suscribirme</a>
-          <p class="tiny muted" style="margin:10px 0 0">Te atendemos por WhatsApp y activamos tu plan en el día.</p>
+          <a class="btn btn-primary btn-block" href="/suscribirme?plan=monthly">Probar <span data-trial>3</span> días gratis</a>
+          <p class="tiny muted" style="margin:10px 0 0">Con tarjeta por Mercado Pago. Cancelás cuando quieras. También podés <a href="/suscribirme?metodo=transferencia">pagar por transferencia</a>.</p>
+        </div>
+        <div class="card price">
+          <span class="badge-top">12 meses al precio de 10</span>
+          <h3>Anual</h3>
+          <div class="amount"><span data-price="annual">$150.000</span> <span class="small muted">/ año</span></div>
+          <ul>
+            <li><i data-i="check"></i> Todo lo del plan mensual</li>
+            <li><i data-i="check"></i> Pagás 10 meses y usás 12</li>
+            <li><i data-i="check"></i> Te olvidás de los aumentos durante un año</li>
+          </ul>
+          <a class="btn btn-light btn-block" href="/suscribirme?plan=annual">Elegir anual</a>
+          <p class="tiny muted" style="margin:10px 0 0">Precio vigente hasta el <span data-until>31 de diciembre de 2026</span>.</p>
         </div>
       </div>
     </div>
@@ -143,7 +155,7 @@
       <details class="faq"><summary>¿Qué tan exacta es la ganancia?</summary><p>Para cada venta usamos los cargos reales de la facturación de Mercado Libre (comisión, envío, cuotas). Si una venta todavía no figura en la facturación, usamos el dato de la orden y la marcamos como "estimado". Vos cargás el costo de cada producto; sin costo, no calculamos ganancia.</p></details>
       <details class="faq"><summary>¿Qué es el costo de reposición?</summary><p>Lo que te cuesta comprar hoy de nuevo ese producto. Con inflación, podés estar ganando "sobre el papel" y perdiendo plata cada vez que reponés. Rinde te muestra los dos márgenes.</p></details>
       <details class="faq"><summary>¿Usa inteligencia artificial?</summary><p>Sí, para redactar el plan de acción de cada publicación a partir de tus datos reales y de las recomendaciones oficiales de Mercado Libre. La IA no puede inventar datos: solo trabaja con lo que medimos.</p></details>
-      <details class="faq"><summary>¿Cómo pago el Plan Rinde?</summary><p>Por ahora, por transferencia o Mercado Pago coordinado por WhatsApp. Tocás "Suscribirme", nos escribís y lo activamos en el día. Podés darlo de baja cuando quieras.</p></details>
+      <details class="faq"><summary>¿Cómo pago el Plan Rinde?</summary><p>Con tarjeta por Mercado Pago (los primeros 3 días son gratis y después se cobra solo) o por transferencia: nos mandás el comprobante por WhatsApp y lo activamos en el día. Cancelás cuando quieras. Si un cobro falla, tenés 5 días para regularizar sin perder nada.</p></details>
       <details class="faq"><summary>¿Y si no tengo tiempo de hacer los cambios?</summary><p>Innovasmart los hace por vos: optimizamos tus publicaciones a partir del diagnóstico. <a data-wa="optimize" href="#">Escribinos por WhatsApp</a>.</p></details>
     </div>
   </section>
@@ -173,6 +185,14 @@
   import { waLink } from '/shared/config.js';
   hydrateIcons();
   document.querySelectorAll('[data-wa]').forEach((a) => { a.href = waLink(a.dataset.wa); a.target = '_blank'; a.rel = 'noopener'; });
+  fetch('/api/billing').then((r) => (r.ok ? r.json() : null)).then((c) => {
+    if (!c) return;
+    const money = (n) => '$' + Math.round(n).toLocaleString('es-AR');
+    document.querySelectorAll('[data-price="monthly"]').forEach((el) => { el.textContent = money(c.monthly_price); });
+    document.querySelectorAll('[data-price="annual"]').forEach((el) => { el.textContent = money(c.annual_price); });
+    document.querySelectorAll('[data-trial]').forEach((el) => { el.textContent = c.trial_days; });
+    if (c.annual_valid_until) document.querySelectorAll('[data-until]').forEach((el) => { el.textContent = new Date(c.annual_valid_until + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' }); });
+  }).catch(() => {});
   const err = new URLSearchParams(location.search).get('error');
   const msgs = {
     cancelado: 'Cancelaste la conexión con Mercado Libre. Cuando quieras, probá de nuevo.',

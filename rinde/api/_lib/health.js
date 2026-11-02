@@ -1,10 +1,11 @@
 // Chequeo de conexiones para el admin: dice si cada servicio responde, sin mostrar ninguna clave.
 import Anthropic from '@anthropic-ai/sdk';
 import { db } from './db.js';
+import { mpHealth } from './mp.js';
 
 export const ENV_KEYS = [
   'RINDE_MELI_APP_ID', 'RINDE_MELI_SECRET', 'RINDE_MELI_REDIRECT_URI', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY',
-  'ANTHROPIC_API_KEY', 'RESEND_API_KEY', 'SESSION_SECRET', 'TOKEN_ENC_KEY', 'CRON_SECRET', 'ADMIN_KEY', 'RINDE_APP_URL',
+  'ANTHROPIC_API_KEY', 'RESEND_API_KEY', 'SESSION_SECRET', 'TOKEN_ENC_KEY', 'CRON_SECRET', 'ADMIN_KEY', 'RINDE_APP_URL', 'MP_ACCESS_TOKEN', 'MP_WEBHOOK_SECRET',
 ];
 
 const withTimeout = (p, ms = 8000) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('No respondió a tiempo')), ms))]);
@@ -73,7 +74,7 @@ export async function runHealth() {
   const run = async (name, fn) => {
     try { return { name, ...(await fn()) }; } catch (e) { return { name, ok: false, detail: e.message === 'No respondió a tiempo' ? 'No respondió a tiempo.' : 'No pudimos conectar.' }; }
   };
-  const checks = await Promise.all([run('Supabase', checkSupabase), run('Mercado Libre', checkMeli), run('Anthropic (IA)', checkAnthropic), run('Resend (emails)', checkResend)]);
+  const checks = await Promise.all([run('Supabase', checkSupabase), run('Mercado Libre', checkMeli), run('Anthropic (IA)', checkAnthropic), run('Resend (emails)', checkResend), run('Mercado Pago (cobros)', mpHealth)]);
   return {
     env: envChecks(),
     checks,

@@ -7,6 +7,28 @@ import { db } from './_lib/db.js';
 import { startJob, step, loadAccount } from './_lib/sync.js';
 import { buildModel, buildRuleSummary } from '../shared/model.js';
 import { dailyAlertEmail, weeklyEmail, sendEmail } from './_lib/email.js';
+import { getBillingConfig, notifyBilling, patchUser } from './_lib/mp.js';
+import { dailyBillingCheck } from '../shared/plans.js';
+
+/** Vencimientos, gracia y avisos de cobro. No borra datos: como mucho pasa a plan gratis. */
+async function billingPass(nowIso) {
+  const cfg = await getBillingConfig();
+  const users = await db.select('rinde_users', { plan: 'rinde' }, { limit: 2000 });
+  const out = [];
+  for (const u of users) {
+    const { patch, notices } = dailyBillingCheck(u, { now: nowIso, cfg });
+    let u2 = await patchUser(u, patch);
+    const sent = { ...(u.settings?.billing_notices || {}) };
+    const today = nowIso.slice(0, 10);
+    for (const n of notices) {
+      if (sent[n] === today) continue;
+      if (await notifyBilling(u2, n)) sent[n] = today;
+    }
+    if (notices.length) u2 = await patchUser(u2, { settings: { ...(u2.settings || {}), billing_notices: sent } });
+    if (Object.keys(patch).length || notices.length) out.push({ user: u.nickname, cambios: patch, avisos: notices });
+  }
+  return out;
+}
 
 export const config = { maxDuration: 300 };
 const BUDGET_MS = 270000;
@@ -19,6 +41,9 @@ export default handler(async (req, res) => {
   const q = query(req);
   const isMonday = q.job === 'weekly' || new Date().getUTCDay() === 1;
 
+  const nowIso = q.now && process.env.NODE_ENV === 'development' ? new Date(q.now).toISOString() : new Date().toISOString();
+  let billing = [];
+  try { billing = await billingPass(nowIso); } catch (e) { console.error('[rinde][cron] cobros', e.message); billing = [{ error: e.message }]; }
   const users = (await db.select('rinde_users', { plan: 'rinde' }, { order: 'last_cron_at.asc.nullsfirst', limit: 200 }));
   const report = [];
   for (const u of users) {
@@ -61,5 +86,5 @@ export default handler(async (req, res) => {
       report.push({ user: u.nickname, error: e.message });
     }
   }
-  json(res, 200, { ok: true, weekly: isMonday, report });
+  json(res, 200, { ok: true, weekly: isMonday, billing, report });
 });

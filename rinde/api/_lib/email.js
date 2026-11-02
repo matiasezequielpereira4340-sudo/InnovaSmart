@@ -64,3 +64,34 @@ export async function sendEmail({ to, subject, html }) {
   if (!r.ok) throw new Error(`Resend ${r.status}: ${(await r.text()).slice(0, 200)}`);
   return r.json();
 }
+
+// ─────────────────────────────── Emails de cobro ───────────────────────────
+const fdate = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'long', timeZone: 'America/Argentina/Buenos_Aires' }) : '');
+const money = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+
+function bankBlock(cfg) {
+  const b = cfg.bank || {};
+  const rows = [['Titular', b.holder], ['CUIT', b.cuit], ['Banco', b.bank], ['CBU / CVU', b.cbu], ['Alias', b.alias]].filter(([, v]) => v);
+  if (!rows.length) return '';
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0;border:1px solid #d9dfd8;border-radius:10px">${rows.map(([k, v]) => `<tr><td style="padding:8px 12px;color:#66736c;font-size:13px">${k}</td><td style="padding:8px 12px;font-family:monospace;font-size:14px"><b>${esc(v)}</b></td></tr>`).join('')}</table>`;
+}
+
+/** kind: trial_started | payment_failed | lapsed | expiring_soon | expires_today | reactivated | grace_started */
+export function billingEmail(kind, { user, cfg, appUrl }) {
+  const name = esc(user.nickname || '');
+  const wa = `https://wa.me/${cfg.whatsapp || '5491160374306'}?text=${encodeURIComponent(`Hola, soy ${user.nickname || ''} y quiero renovar el Plan Rinde`)}`;
+  const waBtn = `<a href="${wa}" style="display:inline-block;margin-top:6px;padding:10px 16px;background:#0f7a4f;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px">Escribirnos por WhatsApp</a>`;
+  const payLink = `${appUrl}/suscribirme`;
+  const T = {
+    trial_started: { s: 'Rinde: arrancó tu prueba gratis', h: 'Tu prueba gratis ya arrancó', b: `Hola ${name}, tenés el Plan Rinde completo hasta el <b>${fdate(user.plan_expires_at)}</b>. Si no cancelás, Mercado Pago cobra automáticamente con tu tarjeta.` },
+    payment_failed: { s: 'Rinde: no pudimos cobrar tu plan', h: 'No pudimos cobrar tu Plan Rinde', b: `Hola ${name}, Mercado Pago rechazó el cobro. Tenés hasta el <b>${fdate(user.grace_until)}</b> para actualizar tu tarjeta o pagar por transferencia. Mientras tanto seguís con todo activo.<br><br><a href="${payLink}">Actualizar medio de pago</a>` },
+    grace_started: { s: 'Rinde: tu plan venció', h: 'Tu Plan Rinde venció', b: `Hola ${name}, no registramos el pago de este período. Tenés hasta el <b>${fdate(user.grace_until)}</b> para pagar y no perder las alertas ni la rentabilidad.${bankBlock(cfg)}${waBtn}` },
+    expiring_soon: { s: 'Rinde: tu plan vence en 5 días', h: 'Tu plan vence en 5 días', b: `Hola ${name}, tu Plan Rinde vence el <b>${fdate(user.plan_expires_at)}</b>. Para renovarlo, transferí a estos datos y mandanos el comprobante:${bankBlock(cfg)}${waBtn}` },
+    expires_today: { s: 'Rinde: tu plan vence hoy', h: 'Tu plan vence hoy', b: `Hola ${name}, hoy vence tu Plan Rinde. Si ya transferiste, mandanos el comprobante. Si no, tenés ${cfg.grace_days} días de gracia.${bankBlock(cfg)}${waBtn}` },
+    lapsed: { s: 'Rinde: pasaste al plan gratis', h: 'Pasaste al plan gratis', b: `Hola ${name}, como no registramos el pago, tu cuenta pasó al plan gratis. <b>No borramos nada</b>: tus costos y tu historial siguen guardados. Apenas pagues, se reactiva sola.<br><br><a href="${payLink}">Reactivar el Plan Rinde</a>` },
+    reactivated: { s: 'Rinde: tu plan está activo de nuevo', h: 'Listo, tu Plan Rinde está activo', b: `Hola ${name}, recibimos el pago. Tu plan está activo hasta el <b>${fdate(user.plan_expires_at)}</b>.` },
+  }[kind];
+  const body = `<h1 style="font-size:22px;margin:0 0 10px">${T.h}</h1><p style="margin:0;color:#3b4842;line-height:1.5">${T.b}</p>`;
+  return { subject: T.s, html: layout({ title: T.s, preheader: T.h, body, appUrl: appUrl + '/app' }) };
+}
+export { money as fmtMoneyEmail };

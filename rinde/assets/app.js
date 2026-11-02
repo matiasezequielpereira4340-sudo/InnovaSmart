@@ -76,9 +76,9 @@ function lockCard(what) {
   return `<div class="card lock">${I.lock.replace('<svg', '<svg class="big"')}
     <h2 style="margin-top:10px">${esc(what)} es parte del Plan Rinde</h2>
     <p class="muted">Diagnóstico ilimitado, rentabilidad real por producto, margen a costo de reposición y alertas diarias por email.</p>
-    <p><b style="font-size:1.4rem">$${PLAN_PRICE_ARS.toLocaleString('es-AR')}</b> <span class="muted">/ mes</span></p>
-    <a class="btn btn-primary" href="${waLink('subscribe')}" target="_blank" rel="noopener">Suscribirme</a>
-    <p class="tiny muted" style="margin-top:10px">Se abre WhatsApp con el mensaje listo. Activamos tu plan en el día.</p>
+    <p><b style="font-size:1.4rem">$${PLAN_PRICE_ARS.toLocaleString('es-AR')}</b> <span class="muted">/ mes · 3 días gratis con tarjeta</span></p>
+    <a class="btn btn-primary" href="/suscribirme">Suscribirme</a>
+    <p class="tiny muted" style="margin-top:10px">Con tarjeta por Mercado Pago o por transferencia. Cancelás cuando quieras.</p>
     <p class="small"><a href="/demo#/${what === 'La rentabilidad' ? 'rentabilidad' : 'alertas'}">Ver cómo se ve en el demo</a></p>
   </div>`;
 }
@@ -101,7 +101,7 @@ function header() {
       <summary class="btn btn-ghost btn-sm" aria-label="Menú de cuenta">${I.user}<span class="desktop-only">${esc(S.user?.nickname || (DEMO ? 'TIENDA.EJEMPLO' : ''))}</span></summary>
       <div class="card menu-panel">
         <div class="small muted" style="padding:6px 8px">${esc(S.user?.nickname || '')} · ${S.paid ? '<span class="tag tag-accent">Plan Rinde</span>' : '<span class="tag tag-neutral">Gratis</span>'}</div>
-        ${!S.paid ? `<a class="btn btn-primary btn-sm btn-block" href="${waLink('subscribe')}" target="_blank" rel="noopener">Suscribirme al Plan Rinde</a>` : ''}
+        ${!S.paid ? `<a class="btn btn-primary btn-sm btn-block" href="/suscribirme">Suscribirme al Plan Rinde</a>` : ''}
         ${DEMO ? '<a class="btn btn-ghost btn-sm btn-block" href="/">Volver al inicio</a>' : `
         <a class="btn btn-ghost btn-sm btn-block" href="/api/auth/logout">${I.logout} Salir</a>
         <button class="btn btn-ghost btn-sm btn-block" style="color:var(--bad)" id="disconnect">${I.trash} Desconectar mi cuenta</button>`}
@@ -116,6 +116,16 @@ function currentRoute() {
   return ['diagnostico', 'rentabilidad', 'alertas', 'conectando'].includes(r) ? r : 'diagnostico';
 }
 
+function billingBanner() {
+  const b = S.user?.billing;
+  if (DEMO || !b?.status) return '';
+  const d = (iso) => (iso ? new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'long' }) : '');
+  if (b.status === 'past_due') return `<div class="wrap" style="padding-top:14px"><div class="notice notice-bad" role="alert">${I.alert}<div><b>No pudimos cobrar tu Plan Rinde.</b> Tenés hasta el ${d(b.grace_until)} para pagar sin perder nada. <a href="/suscribirme">Actualizar medio de pago</a></div></div></div>`;
+  if (b.status === 'lapsed') return `<div class="wrap" style="padding-top:14px"><div class="notice notice-warn">${I.info}<div>Tu plan se cortó por falta de pago y pasaste al plan gratis. No borramos nada. <a href="/suscribirme">Reactivar el Plan Rinde</a></div></div></div>`;
+  if (b.status === 'trial') return `<div class="wrap" style="padding-top:14px"><div class="notice notice-info">${I.sparkle}<div>Estás en la prueba gratis hasta el ${d(b.expires_at)}.</div></div></div>`;
+  return '';
+}
+
 function render() {
   const route = currentRoute();
   if (route === 'conectando' && !DEMO) return connectingView();
@@ -123,7 +133,7 @@ function render() {
   if (route === 'rentabilidad') body = profitView();
   else if (route === 'alertas') body = alertsView();
   else body = diagnosisView();
-  $app.innerHTML = header() + `<main class="wrap${route === 'rentabilidad' ? ' wide' : ''}">${body}</main>
+  $app.innerHTML = header() + billingBanner() + `<main class="wrap${route === 'rentabilidad' ? ' wide' : ''}">${body}</main>
   <footer class="footer"><div class="wrap"><span>Rinde · un servicio de Innovasmart · solo lectura: nunca modificamos tu cuenta.</span><span><a href="/privacidad">Privacidad</a> · <a href="/terminos">Términos</a></span></div></footer>`;
   hydrateIcons($app);
   bind(route);
@@ -149,9 +159,9 @@ function diagnosisView() {
     <div><h1>Diagnóstico de tu cuenta</h1><div class="small muted">${total} publicaciones activas y pausadas · datos ${ago(S.syncedAt)}</div></div>
     ${canRegen
       ? `<button class="btn btn-light btn-sm" id="regen">${I.refresh} ${DEMO ? 'Regenerar (demo)' : 'Actualizar diagnóstico'}</button>`
-      : `<a class="btn btn-light btn-sm" href="${waLink('subscribe')}" target="_blank" rel="noopener">${I.lock} Regenerar con Plan Rinde</a>`}
+      : `<a class="btn btn-light btn-sm" href="/suscribirme">${I.lock} Regenerar con Plan Rinde</a>`}
   </div>
-  ${!canRegen ? `<div class="notice notice-info" style="margin-bottom:14px">${I.info}<div>Ya usaste tu diagnóstico gratis: podés verlo siempre. Para actualizarlo cuando cambies algo, <a href="${waLink('subscribe')}" target="_blank" rel="noopener">suscribite al Plan Rinde</a>.</div></div>` : ''}
+  ${!canRegen ? `<div class="notice notice-info" style="margin-bottom:14px">${I.info}<div>Ya usaste tu diagnóstico gratis: podés verlo siempre. Para actualizarlo cuando cambies algo, <a href="/suscribirme">suscribite al Plan Rinde</a>.</div></div>` : ''}
   <div class="diag-grid">
     <section class="summary-card" aria-labelledby="sum-h">
       <div class="label">Resumen de la cuenta · ${total} publicaciones</div>

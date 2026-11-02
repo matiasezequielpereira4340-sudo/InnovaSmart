@@ -27,6 +27,8 @@ Ver `.env.example`. Todas van en Vercel → Settings → Environment Variables (
 | `SESSION_SECRET`, `TOKEN_ENC_KEY`, `CRON_SECRET`, `ADMIN_KEY` | Valores aleatorios. `TOKEN_ENC_KEY` = 64 caracteres hex. Generalos en https://www.random.org/strings/ o con `openssl rand -hex 32` |
 | `RINDE_EMAIL_FROM` (opcional) | Remitente con dominio verificado en Resend |
 | `RINDE_APP_URL` (opcional) | URL pública, para los links de los emails |
+| `MP_ACCESS_TOKEN` | Mercado Pago Developers → Tus integraciones → Credenciales (de prueba primero) |
+| `MP_WEBHOOK_SECRET` | Tus integraciones → Webhooks → clave secreta (URL: `/api/mp-webhook`, eventos: Planes y suscripciones + Pagos) |
 
 ## Base de datos
 Ejecutar `supabase/migrations/20261102000000_rinde_init.sql` en el SQL Editor de Supabase. Crea tablas `rinde_*` con RLS activada y sin políticas (solo accede la service key desde `/api`).
