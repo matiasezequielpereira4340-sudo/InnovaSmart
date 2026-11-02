@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rinde — ¿Tu cuenta de Mercado Libre rinde?</title>
+<meta name="description" content="Rinde te dice cuánto ganás de verdad por producto en Mercado Libre y por qué tus publicaciones paradas no venden, con un plan de acción ordenado por impacto. Solo lectura. Un servicio de Innovasmart.">
+<meta property="og:title" content="Rinde — ¿Tu cuenta de Mercado Libre rinde?">
+<meta property="og:description" content="Diagnóstico gratis de tu cuenta: qué publicaciones no venden, por qué, y cuánto ganás de verdad.">
+<meta name="theme-color" content="#1b1f6b">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="logo" href="/" aria-label="Rinde, inicio"><span class="logo-mark" data-logo></span>Rinde<span class="dot">.</span><span class="by">por Innovasmart</span></a>
+    <nav class="topnav" aria-label="Secciones">
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#precios">Precios</a>
+      <a href="#preguntas">Preguntas</a>
+    </nav>
+    <a class="btn btn-ghost btn-sm" href="/demo">Ver demo</a>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div id="login-error" class="notice notice-bad" role="alert" hidden style="margin-bottom:14px"></div>
+        <span class="eyebrow"><i data-i="sparkle"></i> Para vendedores de Mercado Libre Argentina</span>
+        <h1>¿Tu cuenta de Mercado Libre <em>rinde</em>?</h1>
+        <p class="lead">Conectá tu cuenta y en minutos sabés <b>por qué tus publicaciones paradas no venden</b>, qué cambiar primero y <b>cuánto ganás de verdad</b> por producto, después de comisiones, envíos, cuotas, impuestos y publicidad.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="/api/auth/login" id="cta-main">Diagnosticar mi cuenta gratis <i data-i="arrow"></i></a>
+          <a class="btn btn-light" href="/demo">Ver demo sin registrarme</a>
+        </div>
+        <p class="trust"><i data-i="shield"></i> Solo lectura: Rinde nunca modifica, publica ni pausa nada en tu cuenta.</p>
+      </div>
+      <div class="hero-shot" aria-hidden="true">
+        <div class="mock">
+          <div class="mock-head"><span class="small muted">Diagnóstico de tu cuenta</span><span class="tag tag-accent">25 publicaciones</span></div>
+          <div class="mock-big">3 problemas te están costando ventas</div>
+          <div class="mock-row"><span class="mock-title">Silla Gamer Ergonómica Reclinable</span><span class="tag tag-warn"><i data-i="cart"></i> Visitas sin ventas</span></div>
+          <div class="mock-row"><span class="mock-title">Freidora De Aire 4 Litros Digital</span><span class="tag tag-bad"><i data-i="down"></i> Pierde plata</span></div>
+          <div class="mock-row"><span class="mock-title">Funda Celular</span><span class="tag tag-warn"><i data-i="eyeoff"></i> Sin visitas</span></div>
+          <div class="mock-row"><span class="mock-title">Balanza Digital De Cocina 10kg</span><span class="tag tag-bad"><i data-i="alert"></i> Sin stock</span></div>
+          <div class="mock-row"><span class="mock-title">Auriculares Bluetooth In Ear TWS</span><span class="tag tag-ok"><i data-i="check"></i> Sana</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Vendés, pero no sabés si te queda plata</h2>
+        <p class="lead">El panel de Mercado Libre te muestra ventas, no ganancia. Y cuando una publicación se frena, nadie te dice por qué.</p>
+      </div>
+      <div class="problem-list">
+        <div class="card pcard"><span class="ico ico-warn"><i data-i="eyeoff"></i></span><div><h3>Publicaciones que nadie ve</h3><p class="muted small">Calidad baja, títulos flojos, sin Full ni Flex, fuera del catálogo. Te lo marcamos con los datos oficiales de calidad de Mercado Libre.</p></div></div>
+        <div class="card pcard"><span class="ico ico-warn"><i data-i="cart"></i></span><div><h3>Las ven, pero no las compran</h3><p class="muted small">Precio arriba de la competencia, pocas fotos, sin cuotas, preguntas sin responder. Te decimos cuál pesa más.</p></div></div>
+        <div class="card pcard"><span class="ico ico-bad"><i data-i="down"></i></span><div><h3>Venden y te hacen perder plata</h3><p class="muted small">Sumamos comisión, envío, cuotas, retenciones, costo y publicidad de cada venta. Si perdés, lo vas a ver.</p></div></div>
+        <div class="card pcard"><span class="ico ico-bad"><i data-i="money"></i></span><div><h3>Vendés por debajo de lo que cuesta reponer</h3><p class="muted small">Con inflación, el margen "a costo de compra" miente. Rinde te muestra también el margen a <b>costo de reposición</b>.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="como-funciona">
+    <div class="wrap">
+      <div class="section-head"><h2>Cómo funciona</h2><p class="lead">Tres pasos. Sin planillas, sin instalar nada.</p></div>
+      <div class="steps">
+        <div class="step"><h3>Conectá tu cuenta</h3><p class="muted">Entrás con tu usuario de Mercado Libre. Rinde pide solo permiso de lectura.</p></div>
+        <div class="step"><h3>Analizamos cada publicación</h3><p class="muted">Visitas, ventas, calidad oficial, preguntas, competencia y facturación. Te mostramos el avance en vivo.</p></div>
+        <div class="step"><h3>Recibís tu plan de acción</h3><p class="muted">Cada publicación con su diagnóstico y hasta 5 acciones ordenadas por impacto. Si un producto no tiene salida, te lo decimos.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="readonly">
+        <div>
+          <h2>Tu cuenta, intacta</h2>
+          <p>Rinde es una herramienta de <b>solo lectura</b>. Mira tus datos para darte un diagnóstico, y todo lo que cambies lo hacés vos desde Mercado Libre.</p>
+        </div>
+        <ul>
+          <li><i data-i="shield"></i> No publica, no edita precios, no pausa, no responde preguntas.</li>
+          <li><i data-i="lock"></i> Tus accesos se guardan encriptados y nunca llegan a tu navegador.</li>
+          <li><i data-i="trash"></i> Desconectás tu cuenta con un botón y borramos tus datos.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="precios">
+    <div class="wrap">
+      <div class="section-head"><h2>Precios</h2><p class="lead">Probalo gratis. Si te sirve, seguís con el Plan Rinde.</p></div>
+      <div class="prices">
+        <div class="card price">
+          <h3>Gratis</h3>
+          <div class="amount">$0</div>
+          <ul>
+            <li><i data-i="check"></i> 1 diagnóstico completo de tu cuenta</li>
+            <li><i data-i="check"></i> Clasificación de todas tus publicaciones</li>
+            <li><i data-i="check"></i> Plan de acción por publicación</li>
+            <li><i data-i="check"></i> Resumen: los 3 problemas que más ventas te cuestan</li>
+          </ul>
+          <a class="btn btn-ghost btn-block" href="/api/auth/login">Diagnosticar mi cuenta gratis</a>
+          <p class="tiny muted" style="margin:10px 0 0">Después de usarlo seguís viendo el resultado, pero no podés regenerarlo.</p>
+        </div>
+        <div class="card price featured">
+          <span class="badge-top">Recomendado</span>
+          <h3>Plan Rinde</h3>
+          <div class="amount">$15.000 <span class="small muted">/ mes</span></div>
+          <ul>
+            <li><i data-i="check"></i> Diagnóstico ilimitado, cuando quieras</li>
+            <li><i data-i="check"></i> Rentabilidad real por producto y por venta</li>
+            <li><i data-i="check"></i> Margen a costo de reposición</li>
+            <li><i data-i="check"></i> Precio mínimo sin pérdida y precio sugerido</li>
+            <li><i data-i="check"></i> Alertas diarias por email y resumen de los lunes</li>
+          </ul>
+          <a class="btn btn-primary btn-block" data-wa="subscribe" href="#">Suscribirme</a>
+          <p class="tiny muted" style="margin:10px 0 0">Te atendemos por WhatsApp y activamos tu plan en el día.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="preguntas">
+    <div class="wrap" style="max-width:820px">
+      <div class="section-head"><h2>Preguntas frecuentes</h2></div>
+      <details class="faq"><summary>¿Rinde puede cambiar algo de mi cuenta?</summary><p>No. Pedimos únicamente permiso de lectura. Rinde no puede publicar, editar, pausar ni responder nada. Todas las acciones las hacés vos desde Mercado Libre.</p></details>
+      <details class="faq"><summary>¿De dónde salen los datos?</summary><p>De la API oficial de Mercado Libre: tus publicaciones, visitas, ventas, la calidad oficial de cada publicación, preguntas, reputación y la facturación de cada venta. Si Mercado Libre no devuelve un dato, te mostramos "sin dato": nunca lo inventamos.</p></details>
+      <details class="faq"><summary>¿Qué tan exacta es la ganancia?</summary><p>Para cada venta usamos los cargos reales de la facturación de Mercado Libre (comisión, envío, cuotas). Si una venta todavía no figura en la facturación, usamos el dato de la orden y la marcamos como "estimado". Vos cargás el costo de cada producto; sin costo, no calculamos ganancia.</p></details>
+      <details class="faq"><summary>¿Qué es el costo de reposición?</summary><p>Lo que te cuesta comprar hoy de nuevo ese producto. Con inflación, podés estar ganando "sobre el papel" y perdiendo plata cada vez que reponés. Rinde te muestra los dos márgenes.</p></details>
+      <details class="faq"><summary>¿Usa inteligencia artificial?</summary><p>Sí, para redactar el plan de acción de cada publicación a partir de tus datos reales y de las recomendaciones oficiales de Mercado Libre. La IA no puede inventar datos: solo trabaja con lo que medimos.</p></details>
+      <details class="faq"><summary>¿Cómo pago el Plan Rinde?</summary><p>Por ahora, por transferencia o Mercado Pago coordinado por WhatsApp. Tocás "Suscribirme", nos escribís y lo activamos en el día. Podés darlo de baja cuando quieras.</p></details>
+      <details class="faq"><summary>¿Y si no tengo tiempo de hacer los cambios?</summary><p>Innovasmart los hace por vos: optimizamos tus publicaciones a partir del diagnóstico. <a data-wa="optimize" href="#">Escribinos por WhatsApp</a>.</p></details>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="wrap final-cta">
+      <h2>Descubrí qué te está frenando las ventas</h2>
+      <p class="lead" style="margin:0 auto 18px">El primer diagnóstico es gratis y tarda unos minutos.</p>
+      <div class="cta-row" style="justify-content:center">
+        <a class="btn btn-primary" href="/api/auth/login">Diagnosticar mi cuenta gratis <i data-i="arrow"></i></a>
+        <a class="btn btn-light" href="/demo">Ver demo</a>
+      </div>
+      <p class="small muted">¿Querés usar IA en tu negocio como esta herramienta? <a data-wa="ai" href="#">Hablemos</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <span>© 2026 Rinde · un servicio de Innovasmart. No está afiliado a Mercado Libre.</span>
+    <span><a href="/privacidad">Privacidad</a> · <a href="/terminos">Términos</a> · <a data-wa="help" href="#">Contacto</a></span>
+  </div>
+</footer>
+
+<script type="module">
+  import { hydrateIcons } from '/assets/icons.js';
+  import { waLink } from '/shared/config.js';
+  hydrateIcons();
+  document.querySelectorAll('[data-wa]').forEach((a) => { a.href = waLink(a.dataset.wa); a.target = '_blank'; a.rel = 'noopener'; });
+  const err = new URLSearchParams(location.search).get('error');
+  const msgs = {
+    cancelado: 'Cancelaste la conexión con Mercado Libre. Cuando quieras, probá de nuevo.',
+    estado: 'La conexión tardó demasiado o se cortó. Volvé a intentarlo.',
+    meli: 'Mercado Libre no respondió, reintentá en unos minutos.',
+    sitio: 'Por ahora Rinde funciona solo con cuentas de Mercado Libre Argentina.',
+    sesion: 'Tu sesión expiró. Conectá tu cuenta de nuevo.',
+    config: 'La conexión con Mercado Libre todavía no está habilitada en este sitio. Mientras tanto, mirá el demo.',
+  };
+  if (err) { const el = document.getElementById('login-error'); el.textContent = msgs[err] || 'Algo falló. Volvé a intentarlo.'; el.hidden = false; }
+</script>
+</body>
+</html>

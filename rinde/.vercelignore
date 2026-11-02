@@ -1,0 +1,5 @@
+scripts
+supabase
+*.md
+.env*
+node_modules

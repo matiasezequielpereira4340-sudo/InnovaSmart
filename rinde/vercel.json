@@ -1,0 +1,29 @@
+{
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/demo", "destination": "/app.html" },
+    { "source": "/app", "destination": "/app.html" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/api/auth/:action", "destination": "/api/auth?action=:action" }
+  ],
+  "functions": {
+    "api/sync.js": { "maxDuration": 60 },
+    "api/diagnosis.js": { "maxDuration": 60 },
+    "api/cron.js": { "maxDuration": 300 }
+  },
+  "crons": [
+    { "path": "/api/cron", "schedule": "17 11 * * *" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+      ]
+    }
+  ]
+}
