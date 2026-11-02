@@ -27,15 +27,29 @@ async function tokenRequest(params) {
     client_secret: process.env.RINDE_MELI_SECRET,
     ...params,
   });
-  const r = await fetch(`${API}/oauth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-    body,
-  });
+  let r;
+  try {
+    r = await fetch(`${API}/oauth/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body,
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {
+    const e = new MeliError(503, 'Mercado Libre no respondió, reintentá en unos minutos.', '/oauth/token');
+    e.reason = 'sin_respuesta';
+    throw e;
+  }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
-    console.error('[rinde][meli] token', r.status, data?.error, data?.message);
-    throw new MeliError(r.status === 400 ? 401 : r.status, 'Mercado Libre no aceptó la conexión. Volvé a conectar tu cuenta.', '/oauth/token');
+    // Motivo que da MeLi (invalid_client, invalid_grant, ...). Nunca logueamos claves ni el código.
+    const reason = data?.error || (r.status >= 500 ? 'meli_caido' : `http_${r.status}`);
+    console.error('[rinde][meli] token rechazado:', r.status, reason, (data?.message || '').slice(0, 120));
+    const e = new MeliError(r.status >= 500 ? 503 : 401, r.status >= 500 ? 'Mercado Libre no respondió, reintentá en unos minutos.' : 'Mercado Libre no aceptó la conexión. Volvé a conectar tu cuenta.', '/oauth/token');
+    e.reason = reason;
+    e.meliStatus = r.status;
+    e.meliMessage = (data?.message || '').slice(0, 160);
+    throw e;
   }
   return data; // { access_token, refresh_token, expires_in, user_id, scope }
 }

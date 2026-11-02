@@ -26,12 +26,18 @@ const S = {
 
 // ─────────────────────────────── API ───────────────────────────────────────
 async function api(path, opts = {}) {
+  const { timeout = 50000, ...rest } = opts;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeout);
   let r;
   try {
-    r = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  } catch {
+    r = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...rest, body: rest.body ? JSON.stringify(rest.body) : undefined, signal: ctl.signal });
+  } catch (e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') throw Object.assign(new Error('El servidor tardó demasiado en responder.'), { status: 0, code: 'timeout' });
     throw Object.assign(new Error('No hay conexión. Revisá tu internet y reintentá.'), { status: 0 });
   }
+  clearTimeout(timer);
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw Object.assign(new Error(data.error || 'Algo falló. Reintentá en unos minutos.'), { status: r.status, code: data.code, data });
   return data;
@@ -127,8 +133,13 @@ function billingBanner() {
 }
 
 function render() {
-  const route = currentRoute();
-  if (route === 'conectando' && !DEMO) return connectingView();
+  let route = currentRoute();
+  if (route === 'conectando') {
+    // Solo mostramos "diagnosticando" si de verdad hay un diagnóstico en curso; si no, vamos al resultado.
+    if (!DEMO && S.connectRun && !S.connectRun.ended) return connectingView();
+    history.replaceState(null, '', '#/diagnostico');
+    route = 'diagnostico';
+  }
   let body = '';
   if (route === 'rentabilidad') body = profitView();
   else if (route === 'alertas') body = alertsView();
@@ -168,7 +179,8 @@ function diagnosisView() {
       <h2 id="sum-h">${esc(sum.headline)}</h2>
       <div class="problems">${(sum.problems || []).map((p) => `<div class="problem"><b>${esc(p.label)}</b><span>${esc(p.detail)}${p.fix ? ` — ${esc(p.fix)}` : ''}</span></div>`).join('') || '<div class="problem"><b>Sin problemas graves</b><span>Tu cuenta está sana.</span></div>'}</div>
       ${sum.first ? `<div class="first">${I.arrow}<div><b>Qué arreglar primero:</b> ${esc(sum.first)}</div></div>` : ''}
-      <div class="meta">${sum.source === 'ia' ? 'Resumen redactado con IA a partir de tus datos reales.' : 'Resumen calculado con tus datos reales.'} Los montos de ventas perdidas son estimados.</div>
+      ${sum.explain ? `<details class="meta" style="margin-top:12px"><summary style="cursor:pointer;color:var(--panel-ink);font-weight:600">¿Cómo calculamos este número?</summary><p style="margin:6px 0 0">${esc(sum.explain)}</p></details>` : ''}
+      <div class="meta">${sum.source === 'ia' ? 'Las recomendaciones las redacta la IA con tus datos reales; los montos los calculamos nosotros.' : 'Resumen calculado con tus datos reales.'}</div>
     </section>
     <div class="diag-side">
       <div class="label">Por categoría · tocá para filtrar</div>
@@ -239,6 +251,17 @@ function profitRows() {
 function profitView() {
   if (!DEMO && !S.paid) return `<div class="page-head"><h1>Rentabilidad</h1></div>${lockCard('La rentabilidad')}`;
   const k = S.model.kpis;
+  const sales90 = S.model.rows.reduce((t, r) => t + (r.it.sales90 || 0), 0);
+  if (!sales90) {
+    return `<div class="page-head"><div><h1>Rentabilidad real</h1><div class="small muted">Últimos 30 días · cargos de la facturación de Mercado Libre</div></div></div>
+    <div class="notice notice-info" style="margin-bottom:14px" role="status">${I.info}<div><b>Sin ventas en los últimos 90 días: la rentabilidad aparece cuando vendas.</b> Mientras tanto podés dejar cargados los costos de tus productos, así el día que vendas ya ves cuánto te quedó.</div></div>
+    <div class="card" style="max-width:640px"><h3>${I.upload} Costos de tus productos</h3>
+      <p class="small muted">Descargá la plantilla con tus SKUs, completá el costo de compra y subila, o cargalos cuando tengas ventas.</p>
+      <div class="help-links"><button class="btn btn-light btn-sm" id="tpl">${I.download} Descargar plantilla</button>
+      <label class="btn btn-light btn-sm" for="file">${I.upload} Subir CSV o Excel</label><input type="file" id="file" class="sr" accept=".csv,.xlsx,.xls,text/csv"></div>
+      <div id="upload-msg" class="small" style="margin-top:8px" role="status"></div></div>
+    <div style="margin-top:16px">${helpBox()}</div>`;
+  }
   const rows = profitRows();
   const money = (v) => (v == null ? '<span class="muted">—</span>' : fmtMoney(v));
   const cls = (v) => (v == null ? '' : v < 0 ? 'neg' : 'pos');
@@ -370,49 +393,105 @@ function connectingView(state = { phase: 'list', done: 0, total: 0 }) {
   hydrateIcons($app);
 }
 
+const CONNECT_LIMIT_MS = 4 * 60000;
+
+function connectingFailed(msg, canShow) {
+  $app.innerHTML = `<div class="progress-page"><div class="wrap"><div class="card progress-card" role="alert">
+    <a class="logo" href="/"><span class="logo-mark" data-logo></span>Rinde<span class="dot">.</span></a>
+    <h1 style="font-size:1.4rem;margin-top:16px">No pudimos terminar el diagnóstico</h1>
+    <div class="notice notice-warn" style="margin:12px 0">${I.alert}<div>${esc(msg)} Tus datos no se pierden: lo que ya leímos queda guardado.</div></div>
+    <div class="help-links"><button class="btn btn-primary" id="c-retry">${I.refresh} Reintentar</button>${canShow ? '<button class="btn btn-light" id="c-show">Ver lo que ya tenemos</button>' : ''}</div>
+    <p class="tiny muted" style="margin-top:12px">Si vuelve a pasar, escribinos por <a href="${waLink('help')}" target="_blank" rel="noopener">WhatsApp</a>.</p>
+  </div></div></div>`;
+  hydrateIcons($app);
+  document.getElementById('c-retry').addEventListener('click', () => runConnecting(false));
+  document.getElementById('c-show')?.addEventListener('click', () => { location.hash = '#/diagnostico'; loadReal().catch((e) => errorView(e.message)); });
+}
+
 async function runConnecting(force = false) {
+  const run = { ended: false };
+  S.connectRun = run;
   location.hash = '#/conectando';
   connectingView();
+  const t0 = Date.now();
+  const late = () => Date.now() - t0 > CONNECT_LIMIT_MS;
+  const finish = async () => {
+    if (run.ended || S.connectRun !== run) return;
+    run.ended = true;
+    clearInterval(watch);
+    document.removeEventListener('visibilitychange', onVisible);
+    location.hash = '#/diagnostico';
+    try { await loadReal(); } catch (e) { errorView(e.message); }
+  };
+  const fail = (msg, canShow = false) => {
+    if (run.ended || S.connectRun !== run) return;
+    run.ended = true;
+    clearInterval(watch);
+    document.removeEventListener('visibilitychange', onVisible);
+    connectingFailed(msg, canShow);
+  };
+  // Control en paralelo: si el diagnóstico ya quedó guardado, lo mostramos aunque algún pedido se haya colgado.
+  const check = async () => {
+    if (run.ended) return;
+    try {
+      const me = await api('/api/me', { timeout: 10000 });
+      if (me.sync?.status === 'done' && me.diagnosis && new Date(me.diagnosis.created_at) >= new Date(t0 - 5000)) finish();
+      else if (late()) fail('Esto está tardando más de lo normal.', !!me.diagnosis);
+    } catch (e) {
+      if (e.status === 401) { run.ended = true; location.href = '/?error=sesion'; }
+      else if (late()) fail('Esto está tardando más de lo normal.');
+    }
+  };
+  const watch = setInterval(check, 8000);
+  const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+  document.addEventListener('visibilitychange', onVisible);
+
   let failures = 0;
   let first = true;
   // 1) Sincronización
-  for (;;) {
+  while (!run.ended) {
+    if (late()) return fail('Mercado Libre está tardando más de lo normal en responder.');
     try {
-      const { sync } = await api('/api/sync', { method: 'POST', body: first ? { start: true, force } : {} });
+      const { sync } = await api('/api/sync', { method: 'POST', body: first ? { start: true, force } : {}, timeout: 70000 });
+      if (run.ended) return;
       first = false;
       failures = 0;
       connectingView(sync);
       if (sync.status === 'done') break;
-      if (sync.status === 'error') throw new Error(sync.error || 'Mercado Libre no respondió, reintentá en unos minutos.');
+      if (sync.status === 'error') throw new Error(sync.error || 'Mercado Libre no respondió.');
     } catch (e) {
-      if (e.status === 401) { location.href = '/?error=sesion'; return; }
+      if (run.ended) return;
+      if (e.status === 401) { run.ended = true; location.href = '/?error=sesion'; return; }
       if (e.status === 402) { toast(e.message); break; }
       failures++;
       connectingView({ phase: 'items', done: 0, total: 0, error: e.message });
-      if (failures > 4) return errorView(e.message);
+      if (failures > 4) return fail(e.message);
       await new Promise((r) => setTimeout(r, 2500 * failures));
     }
   }
   // 2) Planes con IA + resumen
   let aiTotal = 0;
   let aiDone = 0;
-  for (let guard = 0; guard < 200; guard++) {
+  failures = 0;
+  for (let guard = 0; guard < 60 && !run.ended; guard++) {
+    if (late()) break;
     try {
-      const r = await api('/api/diagnosis', { method: 'POST' });
+      const r = await api('/api/diagnosis', { method: 'POST', timeout: 70000 });
+      if (run.ended) return;
       if (r.done) break;
       aiDone += r.analyzed || 0;
       aiTotal = Math.max(aiTotal, aiDone + (r.remaining || 0));
       connectingView({ phase: 'ai', aiDone, aiTotal });
     } catch (e) {
+      if (run.ended) return;
       if (e.status === 402) break;
-      if (e.status === 401) { location.href = '/?error=sesion'; return; }
+      if (e.status === 401) { run.ended = true; location.href = '/?error=sesion'; return; }
       failures++;
-      if (failures > 4) break; // si la IA falla, mostramos el diagnóstico por reglas igual
+      if (failures > 3) break; // si la IA falla, mostramos el diagnóstico por reglas igual
       await new Promise((r) => setTimeout(r, 2000));
     }
   }
-  location.hash = '#/diagnostico';
-  await loadReal();
+  await finish();
 }
 
 // ─────────────────────────────── Eventos ───────────────────────────────────
@@ -584,6 +663,10 @@ async function boot() {
   if (DEMO) {
     const { getDemoData } = await import('../shared/demo-data.js');
     S.demoData = getDemoData();
+    if (new URLSearchParams(location.search).has('sinventas')) {
+      S.demoData.lines = [];
+      S.demoData.items.forEach((it) => { it.sales30 = 0; it.sales90 = 0; });
+    }
     S.model = buildModel(S.demoData);
     S.summary = buildRuleSummary(S.model);
     S.user = { nickname: S.demoData.seller.nickname, ...S.demoData.settings, can_regenerate: true };

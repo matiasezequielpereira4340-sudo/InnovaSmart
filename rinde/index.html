@@ -195,7 +195,9 @@
   }).catch(() => {});
   const err = new URLSearchParams(location.search).get('error');
   const msgs = {
-    cancelado: 'Cancelaste la conexión con Mercado Libre. Cuando quieras, probá de nuevo.',
+    cancelado: 'Cancelaste la conexión con Mercado Libre. No pasa nada: cuando quieras, probá de nuevo.',
+    rechazado: 'Mercado Libre no autorizó la conexión. Probá de nuevo y aceptá los permisos de lectura.',
+    nuestro: 'No pudimos conectar tu cuenta por un problema de nuestro lado. Ya quedó registrado y lo estamos revisando. Probá de nuevo en un rato o escribinos por WhatsApp.',
     estado: 'La conexión tardó demasiado o se cortó. Volvé a intentarlo.',
     meli: 'Mercado Libre no respondió, reintentá en unos minutos.',
     sitio: 'Por ahora Rinde funciona solo con cuentas de Mercado Libre Argentina.',

@@ -76,7 +76,7 @@ export default handler(async (req, res) => {
       const lastWeekly = fresh.settings?.last_weekly_at ? new Date(fresh.settings.last_weekly_at).getTime() : 0;
       if (isMonday && fresh.weekly_enabled !== false && fresh.alert_email && Date.now() - lastWeekly > 5 * 86400000) {
         const diag = await db.one('rinde_diagnoses', { user_id: u.id }, { order: 'created_at.desc' });
-        await sendEmail({ to: fresh.alert_email, ...weeklyEmail({ nickname: fresh.nickname, model, summary: diag?.summary || buildRuleSummary(model), appUrl: base }) });
+        await sendEmail({ to: fresh.alert_email, ...weeklyEmail({ nickname: fresh.nickname, model, summary: { ...(diag?.summary || {}), ...buildRuleSummary(model), first: diag?.summary?.first || buildRuleSummary(model).first }, appUrl: base }) });
         await db.update('rinde_users', { id: u.id }, { settings: { ...(fresh.settings || {}), last_weekly_at: new Date().toISOString() } });
       }
       await db.update('rinde_users', { id: u.id }, { last_cron_at: new Date().toISOString() });

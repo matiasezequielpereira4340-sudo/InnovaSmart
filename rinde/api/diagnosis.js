@@ -4,7 +4,9 @@ import { handler, json, method, AppError } from './_lib/http.js';
 import { currentUser, isPaid, publicUser } from './_lib/users.js';
 import { loadAccount, getJob, progressOf } from './_lib/sync.js';
 import { buildModel, buildRuleSummary } from '../shared/model.js';
-import { generatePlans, generateSummary, planHash } from './_lib/ai.js';
+import { buildRulePlan } from '../shared/rules.js';
+const buildRulePlanHeadline = (r) => buildRulePlan(r.it, r.cls, r.profit).headline;
+import { generatePlans, generateSummary, planHash, claimsFakeLoss } from './_lib/ai.js';
 import { LIMITS } from '../shared/config.js';
 import { db } from './_lib/db.js';
 import { sha256 } from './_lib/crypto.js';
@@ -18,11 +20,22 @@ export default handler(async (req, res) => {
     if (!job || job.status !== 'done') return json(res, 409, { error: 'Todavía no terminamos de analizar tu cuenta.', code: 'not_ready', sync: job ? progressOf(job) : null });
     const model = buildModel(data);
     const diag = await db.one('rinde_diagnoses', { user_id: u.id }, { order: 'created_at.desc' });
+    // El titular y los montos siempre se recalculan con las reglas (corrige diagnósticos viejos con "pierde").
+    const rule = buildRuleSummary(model);
+    const stored = diag?.summary;
+    const fixFor = (label) => { const f = (stored?.problems || []).find((x) => x.label === label)?.fix; return f && !claimsFakeLoss(f) ? f : null; };
+    const sameTop = stored?.problems?.[0]?.label && stored.problems[0].label === rule.problems[0]?.label;
+    const summary = stored
+      ? { ...stored, headline: rule.headline, explain: rule.explain, problems: rule.problems.map((p) => ({ ...p, fix: fixFor(p.label) || p.fix })), first: sameTop && stored.first && !claimsFakeLoss(stored.first) ? stored.first : rule.first }
+      : rule;
+    for (const r of model.rows) if (r.plan?.source === 'ia' && claimsFakeLoss(r.plan.headline, r.profit)) r.plan = { ...r.plan, headline: buildRulePlanHeadline(r) };
+    const sales90 = model.rows.reduce((t, r) => t + (r.it.sales90 || 0), 0);
     return json(res, 200, {
       user: publicUser(u),
       paid,
       syncedAt: job.finished_at,
-      summary: diag?.summary || buildRuleSummary(model),
+      sales90,
+      summary,
       diagnosedAt: diag?.created_at || null,
       model: { ...model, rows: model.rows, kpis: paid ? model.kpis : null, alerts: paid ? model.alerts : [] },
       settings: data.settings,
@@ -53,7 +66,11 @@ export default handler(async (req, res) => {
     const batch = pending.slice(0, LIMITS.AI_ITEMS_PER_BATCH);
     const budget = Math.min(LIMITS.AI_MAX_TOKENS_PER_BATCH, LIMITS.AI_MAX_OUTPUT_TOKENS_PER_DIAGNOSIS - used);
     const { plans, tokens, error } = await generatePlans(batch, budget);
-    const rows = batch.map((r) => ({ user_id: u.id, item_id: r.it.id, input_hash: planHash(r), plan: plans[r.it.id] || { ...r.plan, source: 'reglas' }, created_at: new Date().toISOString() }));
+    const rows = batch.map((r) => {
+      let plan = plans[r.it.id] || { ...r.plan, source: 'reglas' };
+      if (plan.source === 'ia' && claimsFakeLoss(plan.headline, r.profit)) plan = { ...plan, headline: r.plan.headline };
+      return { user_id: u.id, item_id: r.it.id, input_hash: planHash(r), plan, created_at: new Date().toISOString() };
+    });
     await db.upsert('rinde_ai_plans', rows, 'user_id,item_id');
     const aiTokens = used + tokens + (error ? LIMITS.AI_MAX_TOKENS_PER_BATCH : 0); // si la IA falla, no insistimos indefinidamente
     await db.update('rinde_sync_jobs', { user_id: u.id }, { meta: { ...job.meta, ai_tokens: aiTokens } });

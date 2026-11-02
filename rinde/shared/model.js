@@ -91,16 +91,19 @@ const FIX_HINT = {
   conversion_general: 'Mejorá foto principal y descripción.',
 };
 
+export const LOST_EXPLAIN = 'Es una estimación, no plata que perdiste. Para las publicaciones pausadas o sin stock tomamos lo que vendían antes (o una venta por mes si no vendían); para las que tienen pocas visitas, cuánto venderían con 60 visitas y una conversión de 1,5 %; para las que tienen visitas y no venden, la diferencia con esa misma conversión.';
+
 /** Resumen de cuenta por reglas (respaldo de la IA y base de datos para ella). */
 export function buildRuleSummary(model) {
   const p = model.problems;
   return {
-    headline: p.length
-      ? `Estimamos que estás dejando de vender ~${fmtMoney(model.lostTotal)} por mes. Empezá por: ${p[0].label.toLowerCase()}.`
-      : 'Tu cuenta está sana. Seguí así y cargá tus costos para controlar el margen.',
+    headline: model.lostTotal > 0
+      ? `Ventas que podrías estar perdiendo: ~${fmtMoney(model.lostTotal)}/mes (estimado)`
+      : p.length ? 'No vemos ventas perdidas importantes, pero hay cosas para mejorar.' : 'Tu cuenta está sana. Seguí así y cargá tus costos para controlar el margen.',
+    explain: model.lostTotal > 0 ? LOST_EXPLAIN : null,
     problems: p.map((x) => ({
       label: x.label,
-      detail: `${x.items.length} publicación(es) · impacto estimado ${fmtMoney(x.impact)}/mes`,
+      detail: `${x.items.length} publicación(es) · ${x.impact > 0 ? `ventas estimadas en juego ~${fmtMoney(x.impact)}/mes` : 'sin impacto estimado en ventas'}`,
       fix: FIX_HINT[x.code] || '',
       items: x.items,
     })),

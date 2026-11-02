@@ -31,7 +31,11 @@ export default handler(async (req, res) => {
   }
 
   if (action === 'callback') {
-    if (error) return redirect(res, '/?error=cancelado');
+    if (error) {
+      // El usuario tocó "Cancelar" en Mercado Libre (access_denied) u otro rechazo en la pantalla de permisos.
+      console.warn('[rinde][auth] autorización no otorgada:', String(error).slice(0, 40));
+      return redirect(res, error === 'access_denied' ? '/?error=cancelado' : '/?error=rechazado');
+    }
     const raw = unsign(parseCookies(req).rinde_oauth);
     const [st, verifier, nextPath] = (raw || '').split('|');
     if (!st || st !== state || !code) return redirect(res, '/?error=estado');
@@ -47,7 +51,13 @@ export default handler(async (req, res) => {
       setSession(res, user.id);
       return redirect(res, safeNext(nextPath) || '/app#/conectando');
     } catch (e) {
-      console.error('[rinde][auth]', e);
+      const reason = e.reason || (e.code === 'db' ? 'base_de_datos' : e.name === 'MeliError' ? `meli_${e.meliStatus || e.status}` : 'interno');
+      console.error('[rinde][auth] fallo la conexión:', reason, e.meliStatus || '', e.meliMessage || e.message);
+      // Queda registrado para verlo en Admin > Conexiones (sin claves ni códigos).
+      try { await db.upsert('rinde_settings', [{ key: 'last_auth_error', value: { reason, status: e.meliStatus || e.status || null, message: e.meliMessage || null, at: new Date().toISOString() }, updated_at: new Date().toISOString() }], 'key'); } catch {}
+      const ours = ['invalid_client', 'unauthorized_client', 'invalid_scope', 'unauthorized_application', 'base_de_datos', 'interno'].includes(reason) || /^http_4/.test(reason);
+      if (reason === 'invalid_grant') return redirect(res, '/?error=estado');
+      if (ours) return redirect(res, '/?error=nuestro');
       return redirect(res, '/?error=meli');
     }
   }

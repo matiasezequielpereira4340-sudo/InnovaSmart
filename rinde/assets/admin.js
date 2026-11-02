@@ -276,16 +276,16 @@ function validationView() {
   </div>
   ${r ? `
   ${sm.ordersError ? `<div class="notice notice-bad" style="margin-bottom:12px">${I.alert}<div>${esc(sm.ordersError)}</div></div>` : ''}
-  <div class="kpis" style="margin-bottom:12px">
+  <div class="kpis" style="margin-bottom:12px${r.sales.length ? '' : ';display:none'}">
     ${kpi('Ventas analizadas', sm.sales, `${sm.withBilling} con facturación · ${sm.estimated} estimadas`)}
     ${kpi('Con diferencia +2 %', sm.withAlerts, 'ventas a revisar', sm.withAlerts ? 'is-bad' : 'is-ok')}
     ${kpi('Formato distinto', sm.formatProblems, 'respuestas que no coinciden', sm.formatProblems ? 'is-bad' : 'is-ok')}
     ${kpi('Competencia sin dato', `${c.sinDato}/${c.total}`, `${Math.round(c.pct * 100)} % de las publicaciones`, c.pct > 0.3 ? 'is-bad' : '')}
   </div>
-  <div class="grid" style="margin-bottom:16px">
+  <div class="grid" style="margin-bottom:16px${r.sales.length ? '' : ';display:none'}">
     <div class="notice notice-info">${I.info}<div>La facturación respondió con el parámetro <b class="num">${esc(sm.billingParam)}</b>. ${sm.noTaxes ? `En ${sm.noTaxes} de ${sm.withBilling} ventas facturadas no vinieron retenciones.` : ''} Competencia sin dato: ${c.catalogoSinDato} de catálogo y ${c.busquedaSinDato} sin catálogo.</div></div>
   </div>
-  <div class="grid" style="gap:12px">${r.sales.map(saleCard).join('') || '<div class="empty">Esta cuenta no tiene ventas pagas recientes.</div>'}</div>
+  ${r.sales.length ? `<div class="grid" style="gap:12px">${r.sales.map(saleCard).join('')}</div>` : `<div class="notice notice-info" role="status">${I.info}<div><b>Sin ventas en los últimos 90 días: la rentabilidad aparece cuando vendas.</b> Cuando esta cuenta tenga ventas, acá vas a ver cada una comparada contra la facturación de Mercado Libre.<div class="small" style="margin-top:6px">Competencia sin dato: ${c.sinDato} de ${c.total} publicaciones.</div></div></div>`}
   <details class="card" style="margin-top:16px"><summary style="cursor:pointer;font-weight:600">Respuesta cruda de Mercado Libre (sin tokens ni datos del comprador)</summary>
     <p class="small muted" style="margin:10px 0">Así devolvió los datos Mercado Libre. Sirve para revisar el formato real.</p>
     <button class="btn btn-light btn-sm" id="vcopy" type="button">Copiar</button>
@@ -303,6 +303,7 @@ function validationView() {
 async function demoRun() {
   const [{ buildValidationReport, scrub }, { getValidationDemoInput }] = await Promise.all([import('../shared/validation.js'), import('../shared/validation-demo.js')]);
   const input = getValidationDemoInput();
+  if (new URLSearchParams(location.search).has('sinventas')) { input.orders = []; input.calls = {}; }
   run = { report: buildValidationReport(input), raw: scrub({ orders_search: { status: 200, body: { results: input.orders } }, por_venta: input.calls }), created_at: new Date().toISOString() };
 }
 

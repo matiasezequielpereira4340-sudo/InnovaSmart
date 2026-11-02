@@ -64,9 +64,12 @@ async function checkMeli() {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
     body: new URLSearchParams({ grant_type: 'client_credentials', client_id: process.env.RINDE_MELI_APP_ID, client_secret: process.env.RINDE_MELI_SECRET }),
   }));
-  if (r.ok) return { ok: true, detail: 'App ID y Clave secreta correctos.' };
+  let last = null;
+  try { last = (await db.one('rinde_settings', { key: 'last_auth_error' }))?.value || null; } catch {}
+  const lastTxt = last ? ` Último error al conectar una cuenta: ${last.reason}${last.status ? ` (${last.status})` : ''} el ${new Date(last.at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}.` : '';
+  if (r.ok) return { ok: true, detail: 'App ID y Clave secreta correctos.' + lastTxt };
   const b = await r.json().catch(() => ({}));
-  if (b.error === 'invalid_client' || r.status === 401) return { ok: false, detail: 'App ID o Clave secreta incorrectos.' };
+  if (b.error === 'invalid_client' || r.status === 401) return { ok: false, detail: 'App ID o Clave secreta incorrectos (Mercado Libre responde invalid_client).' + lastTxt };
   return { ok: false, detail: `Mercado Libre respondió ${r.status}${b.error ? ` (${b.error})` : ''}.` };
 }
 

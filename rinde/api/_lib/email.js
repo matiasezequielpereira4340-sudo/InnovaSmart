@@ -46,7 +46,7 @@ export function weeklyEmail({ nickname, model, summary, appUrl }) {
   const body = `<h1 style="font-size:22px;margin:0 0 6px">Tu semana en Mercado Libre</h1>
 <p style="margin:0 0 16px;color:#3d4466">Hola ${esc(nickname || '')}, ${esc(summary?.headline || '')}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="6"><tr>${kpi('Facturación 30 d', fmtMoney(k.revenue))}${kpi('Ganancia neta', k.net == null ? 'cargá costos' : fmtMoney(k.net))}${kpi('Margen', fmtPct(k.margin))}</tr></table>
-<h2 style="font-size:16px;margin:20px 0 4px">Lo que más ventas te está costando</h2>
+<h2 style="font-size:16px;margin:20px 0 4px">Dónde podrías estar dejando de vender (estimado)</h2>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${probs}</table>
 <p style="margin:16px 0 0;font-size:14px"><b>Qué arreglar primero:</b> ${esc(summary?.first || '')}</p>
 <p style="margin:8px 0 0;font-size:14px;color:#3d4466">${k.losing} producto(s) pierden plata · ${model.alerts.length} alerta(s) activas.</p>`;

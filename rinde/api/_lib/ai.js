@@ -9,7 +9,7 @@ const MODEL = 'claude-haiku-5-5';
 let client;
 function ai() {
   if (!process.env.ANTHROPIC_API_KEY) return null;
-  client ||= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 2, timeout: 50000 });
+  client ||= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 1, timeout: 25000 }) // < 60 s de la función;
   return client;
 }
 
@@ -21,7 +21,8 @@ Reglas estrictas:
 - Máximo 5 acciones por publicación, ordenadas de mayor a menor impacto. Cada acción es concreta y ejecutable hoy.
 - Tomá como base las "mejoras pendientes de Mercado Libre" y los "motivos detectados".
 - Si la publicación no tiene demanda (casi sin visitas con la ficha bien armada, o competencia saturada con un precio imposible de igualar), el veredicto es "liquidar" y el titular dice exactamente: "Este producto no tiene salida: liquidalo o pausalo."
-- Rinde es de solo lectura: las acciones las hace el vendedor en Mercado Libre.`;
+- Rinde es de solo lectura: las acciones las hace el vendedor en Mercado Libre.
+- Nunca digas que el vendedor "pierde", "perdió" o tiene "pérdidas" salvo que la ganancia neta real sea negativa. Las ventas perdidas son una ESTIMACIÓN: decí "podrías estar dejando de vender" y no pongas montos que no te pasaron.`;
 
 const PLAN_SCHEMA = {
   type: 'object',
@@ -99,6 +100,12 @@ export function itemFacts(r) {
   ].join('\n');
 }
 
+const LOSS_WORDS = /\b(pierd\w*|perd[ée]s|perdi[óo]\w*|p[ée]rdida\w*|perdiendo)\b/i;
+/** true si el texto habla de "pérdida" sin que haya pérdida real (ganancia neta negativa). */
+export function claimsFakeLoss(text, profit) {
+  return LOSS_WORDS.test(String(text || '')) && !(profit?.hasCost && profit.net < 0);
+}
+
 export function planHash(r) {
   return sha256(itemFacts(r)).slice(0, 32);
 }
@@ -161,10 +168,12 @@ export async function generateSummary(model, ruleSummary) {
     });
     if (resp.stop_reason !== 'end_turn') return null;
     const s = JSON.parse(textOf(resp));
+    const clean = (t, fallback) => (t && !LOSS_WORDS.test(t) ? t : fallback);
+    // Los números y el titular salen siempre de las reglas (con respaldo); la IA solo redacta qué hacer.
     return {
-      headline: s.headline,
-      problems: (s.problems || []).slice(0, 3).map((p, i) => ({ ...p, items: ruleSummary.problems[i]?.items || [] })),
-      first: s.first,
+      ...ruleSummary,
+      problems: ruleSummary.problems.map((p, i) => ({ ...p, fix: clean((s.problems || []).find((x) => x.label === p.label)?.fix || (s.problems?.[i]?.label ? null : s.problems?.[i]?.fix), p.fix) })),
+      first: s.problems?.[0]?.label === ruleSummary.problems[0]?.label ? clean(s.first, ruleSummary.first) : ruleSummary.first,
       source: 'ia',
       tokens: resp.usage?.output_tokens || 0,
     };
