@@ -48,6 +48,8 @@ await shot('10-admin', '/admin?demo=1');
 await shot('12-validacion-demo-desktop', '/admin?demo=1#validacion');
 await shot('13-validacion-demo-celular', '/admin?demo=1#validacion', { mobile: true, full: false });
 await shot('14-validacion-demo-celular-venta', '/admin?demo=1#validacion', { mobile: true, full: false, before: async (p) => { await p.waitForSelector('article'); } , scrollTo: 'article:nth-of-type(2)' });
+await shot('15-conexiones-desktop', '/admin?demo=1#conexiones');
+await shot('16-conexiones-celular', '/admin?demo=1#conexiones', { mobile: true });
 await shot('11-landing-error-config', '/?error=config', { mobile: true, full: false });
 await browser.close();
 if (errors.length) { console.log('PROBLEMAS:\n' + errors.join('\n')); process.exitCode = 1; } else console.log('Sin errores de consola.');

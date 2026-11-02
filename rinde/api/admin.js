@@ -5,6 +5,49 @@ import { safeEqual } from './_lib/crypto.js';
 import { db } from './_lib/db.js';
 import { getAccessToken, meliRaw, getBillingRaw, pool } from './_lib/meli.js';
 import { buildValidationReport, scrub } from '../shared/validation.js';
+import { runHealth } from './_lib/health.js';
+import { sha256 } from './_lib/crypto.js';
+
+// ── Límite de intentos: 5 fallidos en 15 min bloquean esa IP por 15 min. ──
+const MAX_FAILS = 5;
+const WINDOW_MS = 15 * 60000;
+const mem = new Map(); // respaldo si la base no está configurada
+const ipOf = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'local').split(',')[0].trim();
+const dbReady = () => !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+
+async function getAttempt(h) {
+  if (!dbReady()) return mem.get(h) || null;
+  try { return await db.one('rinde_admin_attempts', { ip_hash: h }); } catch { return mem.get(h) || null; }
+}
+async function saveAttempt(row) {
+  mem.set(row.ip_hash, row);
+  if (dbReady()) { try { await db.upsert('rinde_admin_attempts', [row], 'ip_hash'); } catch {} }
+}
+async function clearAttempt(h) {
+  mem.delete(h);
+  if (dbReady()) { try { await db.remove('rinde_admin_attempts', { ip_hash: h }); } catch {} }
+}
+
+async function checkKey(req) {
+  const h = sha256('rinde-admin|' + ipOf(req)).slice(0, 40);
+  const now = Date.now();
+  let a = await getAttempt(h);
+  if (a?.locked_until && new Date(a.locked_until).getTime() > now) {
+    const min = Math.ceil((new Date(a.locked_until).getTime() - now) / 60000);
+    throw new AppError(429, `Demasiados intentos fallidos. Probá de nuevo en ${min} minuto(s).`, 'locked');
+  }
+  if (safeEqual(req.headers['x-admin-key'], process.env.ADMIN_KEY)) {
+    if (a) await clearAttempt(h);
+    return;
+  }
+  if (!a || now - new Date(a.window_start).getTime() > WINDOW_MS) a = { ip_hash: h, fails: 0, window_start: new Date(now).toISOString(), locked_until: null };
+  a.fails += 1;
+  if (a.fails >= MAX_FAILS) a.locked_until = new Date(now + WINDOW_MS).toISOString();
+  await saveAttempt(a);
+  await new Promise((r) => setTimeout(r, 600));
+  const left = MAX_FAILS - a.fails;
+  throw new AppError(401, left > 0 ? `Clave incorrecta. Te quedan ${left} intento(s).` : 'Clave incorrecta. Bloqueamos el acceso por 15 minutos.', 'bad_key');
+}
 
 export const config = { maxDuration: 60 };
 
@@ -28,11 +71,10 @@ async function runValidation(user) {
 
 export default handler(async (req, res) => {
   requireEnv('ADMIN_KEY');
-  if (!safeEqual(req.headers['x-admin-key'], process.env.ADMIN_KEY)) {
-    await new Promise((r) => setTimeout(r, 600));
-    throw new AppError(401, 'Clave incorrecta.');
-  }
+  await checkKey(req);
   const q = query(req);
+
+  if (req.method === 'GET' && q.view === 'health') return json(res, 200, await runHealth());
 
   if (req.method === 'GET' && q.view === 'validation') {
     if (!q.user_id) throw new AppError(400, 'Falta elegir el usuario.');

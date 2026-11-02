@@ -16,7 +16,10 @@ let run = null;
 let busy = false;
 let valError = '';
 
-const tab = () => (location.hash === '#validacion' ? 'validacion' : 'usuarios');
+const tab = () => (location.hash === '#validacion' ? 'validacion' : location.hash === '#conexiones' ? 'conexiones' : 'usuarios');
+let health = null;
+let usersError = '';
+let loggedIn = false;
 
 async function call(method, body, qs = '') {
   const r = await fetch('/api/admin' + qs, { method, headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: body ? JSON.stringify(body) : undefined });
@@ -31,12 +34,12 @@ function loginView(err) {
     <form id="f"><div class="field"><label for="k">Clave de administrador</label><input id="k" type="password" autocomplete="current-password" required></div>
     ${err ? `<div class="notice notice-bad small" style="margin-top:10px">${I.alert}<div>${esc(err)}</div></div>` : ''}
     <button class="btn btn-primary btn-block" style="margin-top:12px">Entrar</button></form>
-    <p class="small muted" style="margin-top:12px"><a href="/admin?demo=1">Ver con datos de ejemplo</a> · <a href="/admin?demo=1#validacion">Validación con datos simulados</a></p></div>`;
+    <p class="small muted" style="margin-top:12px"><a href="/admin?demo=1">Ver con datos de ejemplo</a> · <a href="/admin?demo=1#validacion">Validación simulada</a> · <a href="/admin?demo=1#conexiones">Conexiones (ejemplo)</a></p></div>`;
   hydrateIcons(root);
   document.getElementById('f').addEventListener('submit', async (e) => {
     e.preventDefault();
     key = document.getElementById('k').value;
-    try { await load(); try { sessionStorage.setItem('rinde_admin', key); } catch {} } catch (er) { loginView(er.message); }
+    try { await load(); try { sessionStorage.setItem('rinde_admin', key); } catch {} } catch (er) { key = ''; loginView(er.message); }
   });
 }
 
@@ -46,6 +49,7 @@ function tabsBar() {
   <nav class="cat-filter" aria-label="Secciones del admin" style="padding-top:0">
     <a class="chip" href="#usuarios" aria-pressed="${t === 'usuarios'}">${I.user} Usuarios</a>
     <a class="chip" href="#validacion" aria-pressed="${t === 'validacion'}">${I.checkCircle} Validación</a>
+    <a class="chip" href="#conexiones" aria-pressed="${t === 'conexiones'}">${I.plug} Conexiones</a>
   </nav>`;
 }
 
@@ -53,6 +57,7 @@ function usersView() {
   const list = users.filter((u) => !q || `${u.nickname} ${u.alert_email || ''} ${u.meli_user_id}`.toLowerCase().includes(q.toLowerCase()));
   const paid = users.filter((u) => u.plan === 'rinde').length;
   root.innerHTML = `${tabsBar()}
+  ${usersError ? `<div class="notice notice-bad" style="margin-bottom:12px">${I.alert}<div>${esc(usersError)} Mirá la pestaña <a href="#conexiones">Conexiones</a>.</div></div>` : ''}
   <div class="page-head" style="padding-top:4px"><div><h1>Usuarios</h1><div class="small muted">${users.length} usuarios · ${paid} con Plan Rinde · ingreso estimado <span class="num">$${(paid * 15000).toLocaleString('es-AR')}</span>/mes</div></div>
   <div class="field" style="min-width:240px"><label for="q" class="sr">Buscar</label><input id="q" placeholder="Buscar por usuario o email" value="${esc(q)}"></div></div>
   <div class="table-wrap"><table class="data" style="min-width:720px">
@@ -178,7 +183,53 @@ async function runValidation() {
   busy = false; render();
 }
 
-function render() { return tab() === 'validacion' ? validationView() : usersView(); }
+// ─────────────────────────────── Conexiones ────────────────────────────────
+const okTag = (ok, yes = 'Conecta', no = 'No conecta') => (ok ? `<span class="tag tag-ok">${I.check} ${yes}</span>` : `<span class="tag tag-bad">${I.x} ${no}</span>`);
+
+function healthView() {
+  const h = health;
+  const allOk = h && h.checks.every((c) => c.ok) && h.env.every((e) => e.ok);
+  root.innerHTML = `${tabsBar()}
+  <div class="page-head" style="padding-top:4px"><div><h1>Conexiones</h1><div class="small muted">Probamos cada servicio en vivo. Nunca mostramos las claves.</div></div>
+  <button class="btn btn-light btn-sm" id="hrun">${I.refresh} Volver a probar</button></div>
+  ${!h ? `<div class="card">${I.loader.replace('<svg', '<svg class="spin"')} Probando conexiones…</div>` : `
+  <div class="notice ${allOk ? 'notice-ok' : 'notice-warn'}" style="margin-bottom:14px">${allOk ? I.checkCircle : I.alert}<div><b>${allOk ? 'Todo conectado.' : 'Hay cosas para arreglar.'}</b> Versión publicada: <span class="num">${esc(h.deploy.environment)}${h.deploy.branch ? ' · ' + esc(h.deploy.branch) : ''}${h.deploy.commit ? ' · ' + esc(h.deploy.commit) : ''}</span> · probado ${dateTime(h.checked_at)}</div></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));margin-bottom:16px">
+    ${h.checks.map((c) => `<div class="card" style="display:grid;gap:8px;border-left:4px solid ${c.ok ? 'var(--ok)' : 'var(--bad)'}"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(c.name)}</b>${okTag(c.ok)}</div><div class="small muted">${esc(c.detail)}</div></div>`).join('')}
+  </div>
+  <h2 style="font-size:1.2rem;margin:0 0 8px">Variables de entorno</h2>
+  <div class="card" style="padding:0;overflow:hidden">${h.env.map((e) => `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap"><span class="num small">${esc(e.key)}</span><span style="display:flex;gap:8px;align-items:center"><span class="tiny muted">${esc(e.note)}</span>${okTag(e.ok, 'OK', 'Falta')}</span></div>`).join('')}</div>`}`;
+  hydrateIcons(root);
+  document.getElementById('hrun')?.addEventListener('click', loadHealth);
+}
+
+async function loadHealth() {
+  health = null;
+  if (tab() === 'conexiones') healthView();
+  if (DEMO) {
+    health = {
+      deploy: { environment: 'demo', branch: 'rinde-v1', commit: 'ejemplo' },
+      checked_at: new Date().toISOString(),
+      checks: [
+        { name: 'Supabase', ok: true, detail: 'Conecta y encuentra las tablas de Rinde.' },
+        { name: 'Mercado Libre', ok: false, detail: 'Falta el App ID o la Clave secreta de Mercado Libre.' },
+        { name: 'Anthropic (IA)', ok: true, detail: 'Clave válida y el modelo claude-haiku-5-5 está disponible.' },
+        { name: 'Resend (emails)', ok: true, detail: 'Clave válida · sin dominio verificado: los emails solo te llegan a vos.' },
+      ],
+      env: ['RINDE_MELI_APP_ID', 'RINDE_MELI_SECRET', 'RINDE_MELI_REDIRECT_URI', 'SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'ANTHROPIC_API_KEY', 'RESEND_API_KEY', 'SESSION_SECRET', 'TOKEN_ENC_KEY', 'CRON_SECRET', 'ADMIN_KEY', 'RINDE_APP_URL']
+        .map((k) => ({ key: k, ok: !k.startsWith('RINDE_MELI_A') && k !== 'RINDE_MELI_SECRET', note: !k.startsWith('RINDE_MELI_A') && k !== 'RINDE_MELI_SECRET' ? 'cargada' : 'vacía o falta' })),
+    };
+  } else {
+    try { health = await call('GET', null, '?view=health'); } catch (e) { health = { deploy: {}, checked_at: new Date().toISOString(), checks: [{ name: 'Admin', ok: false, detail: e.message }], env: [] }; }
+  }
+  if (tab() === 'conexiones') healthView();
+}
+
+function render() {
+  const t = tab();
+  if (t === 'conexiones') { if (!health) loadHealth(); return healthView(); }
+  return t === 'validacion' ? validationView() : usersView();
+}
 
 async function load() {
   if (DEMO) {
@@ -187,16 +238,24 @@ async function load() {
     if (tab() === 'validacion' && !run) await demoRun();
     return render();
   }
-  const d = await call('GET');
-  users = d.users;
+  try {
+    const d = await call('GET');
+    users = d.users;
+    usersError = '';
+  } catch (e) {
+    if (e.status === 401 || e.status === 429) throw e;
+    users = [];
+    usersError = e.message;
+  }
+  loggedIn = true;
   document.getElementById('logout').hidden = false;
   if (!selUser) selUser = users.find((u) => u.connected)?.id || null;
   if (tab() === 'validacion' && selUser && !run) return loadLastRun();
   render();
 }
 
-window.addEventListener('hashchange', () => { if (!users.length && !DEMO) return; if (tab() === 'validacion' && !run) return DEMO ? demoRun().then(render) : loadLastRun(); render(); });
+window.addEventListener('hashchange', () => { if (!loggedIn && !DEMO) return; if (tab() === 'validacion' && !run) return DEMO ? demoRun().then(render) : loadLastRun(); render(); });
 document.getElementById('logout').addEventListener('click', () => { try { sessionStorage.removeItem('rinde_admin'); } catch {} key = ''; loginView(); });
 hydrateIcons();
-if (DEMO || key) load().catch((e) => loginView(e.status === 401 ? 'Clave incorrecta.' : e.message));
+if (DEMO || key) load().catch((e) => { try { sessionStorage.removeItem('rinde_admin'); } catch {} loginView(e.message); });
 else loginView();
