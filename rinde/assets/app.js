@@ -99,12 +99,12 @@ function header() {
     <div class="desktop-only">${tabs}</div>
     <details class="menu" style="position:relative">
       <summary class="btn btn-ghost btn-sm" aria-label="Menú de cuenta">${I.user}<span class="desktop-only">${esc(S.user?.nickname || (DEMO ? 'TIENDA.EJEMPLO' : ''))}</span></summary>
-      <div class="card" style="position:absolute;right:0;top:44px;min-width:240px;padding:8px;z-index:40">
+      <div class="card menu-panel">
         <div class="small muted" style="padding:6px 8px">${esc(S.user?.nickname || '')} · ${S.paid ? '<span class="tag tag-accent">Plan Rinde</span>' : '<span class="tag tag-neutral">Gratis</span>'}</div>
         ${!S.paid ? `<a class="btn btn-primary btn-sm btn-block" href="${waLink('subscribe')}" target="_blank" rel="noopener">Suscribirme al Plan Rinde</a>` : ''}
-        ${DEMO ? '<a class="btn btn-ghost btn-sm btn-block" style="margin-top:6px" href="/">Volver al inicio</a>' : `
-        <a class="btn btn-ghost btn-sm btn-block" style="margin-top:6px" href="/api/auth/logout">${I.logout} Salir</a>
-        <button class="btn btn-ghost btn-sm btn-block" style="margin-top:6px;color:var(--bad)" id="disconnect">${I.trash} Desconectar mi cuenta</button>`}
+        ${DEMO ? '<a class="btn btn-ghost btn-sm btn-block" href="/">Volver al inicio</a>' : `
+        <a class="btn btn-ghost btn-sm btn-block" href="/api/auth/logout">${I.logout} Salir</a>
+        <button class="btn btn-ghost btn-sm btn-block" style="color:var(--bad)" id="disconnect">${I.trash} Desconectar mi cuenta</button>`}
       </div>
     </details>
   </div></header>
@@ -154,18 +154,19 @@ function diagnosisView() {
   ${!canRegen ? `<div class="notice notice-info" style="margin-bottom:14px">${I.info}<div>Ya usaste tu diagnóstico gratis: podés verlo siempre. Para actualizarlo cuando cambies algo, <a href="${waLink('subscribe')}" target="_blank" rel="noopener">suscribite al Plan Rinde</a>.</div></div>` : ''}
   <div class="diag-grid">
     <section class="summary-card" aria-labelledby="sum-h">
-      <div class="small" style="color:#b9bcf0;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Resumen de la cuenta</div>
+      <div class="label">Resumen de la cuenta · ${total} publicaciones</div>
       <h2 id="sum-h">${esc(sum.headline)}</h2>
       <div class="problems">${(sum.problems || []).map((p) => `<div class="problem"><b>${esc(p.label)}</b><span>${esc(p.detail)}${p.fix ? ` — ${esc(p.fix)}` : ''}</span></div>`).join('') || '<div class="problem"><b>Sin problemas graves</b><span>Tu cuenta está sana.</span></div>'}</div>
       ${sum.first ? `<div class="first">${I.arrow}<div><b>Qué arreglar primero:</b> ${esc(sum.first)}</div></div>` : ''}
       <div class="meta">${sum.source === 'ia' ? 'Resumen redactado con IA a partir de tus datos reales.' : 'Resumen calculado con tus datos reales.'} Los montos de ventas perdidas son estimados.</div>
     </section>
-    <div>
+    <div class="diag-side">
+      <div class="label">Por categoría · tocá para filtrar</div>
       <div class="cat-grid" role="group" aria-label="Publicaciones por categoría">${tiles}</div>
-      <div style="margin-top:14px">${helpBox()}</div>
+      ${helpBox()}
     </div>
   </div>
-  <h2 style="margin:26px 0 8px;font-size:1.25rem">Publicaciones</h2>
+  <h2 style="margin:30px 0 10px;font-size:1.4rem">Publicaciones</h2>
   <div class="cat-filter" role="toolbar" aria-label="Filtrar por categoría">${chips}</div>
   <div class="items">${rows.map(itemCard).join('') || '<div class="empty">No hay publicaciones en esta categoría.</div>'}</div>`;
 }
@@ -176,7 +177,7 @@ function itemCard(r) {
   const ref = competitorRef(it);
   const gap = priceGap(it);
   const reasons = (cls.reasons || []).filter((x) => x.text);
-  return `<details class="item" id="it-${esc(it.id)}">
+  return `<details class="item tone-${CATEGORIES[cls.category].tone}" id="it-${esc(it.id)}">
     <summary>
       <div class="i-top"><div class="i-title">${esc(it.title)}</div>${catTag(cls.category)}</div>
       <div class="i-meta"><span>Precio <b>${fmtMoney(it.price)}</b></span><span>Visitas 30 d <b>${sd(it.visits30, (v) => v.toLocaleString('es-AR'))}</b></span><span>Ventas 30 d <b>${it.sales30 ?? 0}</b></span><span>Conversión <b>${conv == null ? 'sin dato' : fmtPct(conv)}</b></span></div>
@@ -194,8 +195,8 @@ function itemCard(r) {
         <div class="fact"><span>Ventas 90 días</span><b>${it.sales90 ?? 0}</b></div>
         <div class="fact"><span>Fotos</span><b>${sd(it.pictures_count)}</b></div>
       </div>
-      ${reasons.length ? `<div class="small" style="font-weight:700;margin-bottom:4px">Qué detectamos</div><ul class="reasons">${reasons.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul>` : ''}
-      ${plan.actions?.length ? `<div class="small" style="font-weight:700;margin-bottom:6px">Plan de acción (ordenado por impacto)</div>
+      ${reasons.length ? `<p class="sec-label">Qué detectamos</p><ul class="reasons">${reasons.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul>` : ''}
+      ${plan.actions?.length ? `<p class="sec-label">Plan de acción · de mayor a menor impacto</p>
       <ol class="actions">${plan.actions.map((a) => `<li><b>${esc(a.title)}<span class="impact impact-${esc(a.impact)}">impacto ${esc(a.impact)}</span></b><p>${esc(a.detail)}</p></li>`).join('')}</ol>` : ''}
       <div class="source" style="margin-bottom:12px">${plan.source === 'ia' ? 'Plan redactado con IA usando solo tus datos y las recomendaciones de Mercado Libre.' : 'Plan armado con reglas a partir de tus datos.'} ${it.permalink && it.permalink !== '#' ? `· <a href="${esc(it.permalink)}" target="_blank" rel="noopener">Ver publicación</a>` : ''}</div>
       ${cls.category !== 'SANA' ? helpBox() : ''}

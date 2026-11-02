@@ -6,20 +6,20 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 
 function layout({ title, preheader, body, appUrl }) {
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title></head>
-<body style="margin:0;background:#f3f4f8;font-family:Arial,Helvetica,sans-serif;color:#141a33">
+<body style="margin:0;background:#f2f4f0;font-family:Arial,Helvetica,sans-serif;color:#16201b">
 <span style="display:none;max-height:0;overflow:hidden">${esc(preheader)}</span>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f8;padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f0;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e3e5ee">
-<tr><td style="background:#1b1f6b;padding:18px 24px;color:#fff;font-size:20px;font-weight:bold;letter-spacing:-0.3px">Rinde<span style="color:#7cf0c5">.</span> <span style="font-size:12px;font-weight:normal;color:#c9ccf3">por Innovasmart</span></td></tr>
+<tr><td style="background:#16201b;padding:18px 24px;color:#fff;font-size:20px;font-weight:bold;letter-spacing:-0.3px">Rinde<span style="color:#dff57a">.</span> <span style="font-size:12px;font-weight:normal;color:#a9b6ae">por Innovasmart</span></td></tr>
 <tr><td style="padding:24px">${body}
-<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 8px"><tr><td style="background:#3b3fd8;border-radius:10px"><a href="${esc(appUrl)}" style="display:inline-block;padding:12px 20px;color:#fff;text-decoration:none;font-weight:bold">Ver en Rinde</a></td></tr></table>
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 8px"><tr><td style="background:#2540d4;border-radius:10px"><a href="${esc(appUrl)}" style="display:inline-block;padding:12px 20px;color:#fff;text-decoration:none;font-weight:bold">Ver en Rinde</a></td></tr></table>
 <div style="margin-top:20px;padding:16px;background:#eefcf6;border-radius:10px;border:1px solid #c7f0de">
 <div style="font-weight:bold;margin-bottom:6px">¿No tenés tiempo de arreglarlo?</div>
 <div style="font-size:14px;color:#3d4466;margin-bottom:10px">Lo hacemos nosotros: optimizamos tus publicaciones por vos.</div>
 <a href="${waLink('optimize')}" style="display:inline-block;padding:10px 16px;background:#0f8a5f;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px">¿Querés que lo optimicemos por vos?</a>
 </div>
 </td></tr>
-<tr><td style="padding:16px 24px;font-size:12px;color:#6b7194;border-top:1px solid #eceef5">Rinde solo lee tu cuenta: nunca modifica nada en Mercado Libre. Podés desactivar estos emails desde <a href="${esc(appUrl)}/app#/alertas" style="color:#3b3fd8">Alertas</a>.</td></tr>
+<tr><td style="padding:16px 24px;font-size:12px;color:#6b7194;border-top:1px solid #eceef5">Rinde solo lee tu cuenta: nunca modifica nada en Mercado Libre. Podés desactivar estos emails desde <a href="${esc(appUrl)}/app#/alertas" style="color:#2540d4">Alertas</a>.</td></tr>
 </table></td></tr></table></body></html>`;
 }
 

@@ -7,11 +7,12 @@
 <meta name="description" content="Rinde te dice cuánto ganás de verdad por producto en Mercado Libre y por qué tus publicaciones paradas no venden, con un plan de acción ordenado por impacto. Solo lectura. Un servicio de Innovasmart.">
 <meta property="og:title" content="Rinde — ¿Tu cuenta de Mercado Libre rinde?">
 <meta property="og:description" content="Diagnóstico gratis de tu cuenta: qué publicaciones no venden, por qué, y cuánto ganás de verdad.">
-<meta name="theme-color" content="#1b1f6b">
+<meta name="theme-color" content="#f2f4f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1512" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;500;600;700&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
@@ -32,26 +33,29 @@
     <div class="wrap hero-grid">
       <div>
         <div id="login-error" class="notice notice-bad" role="alert" hidden style="margin-bottom:14px"></div>
-        <span class="eyebrow"><i data-i="sparkle"></i> Para vendedores de Mercado Libre Argentina</span>
-        <h1>¿Tu cuenta de Mercado Libre <em>rinde</em>?</h1>
-        <p class="lead">Conectá tu cuenta y en minutos sabés <b>por qué tus publicaciones paradas no venden</b>, qué cambiar primero y <b>cuánto ganás de verdad</b> por producto, después de comisiones, envíos, cuotas, impuestos y publicidad.</p>
+        <span class="label kicker">Para vendedores de Mercado Libre Argentina</span>
+        <h1>¿Tu cuenta de Mercado Libre <span class="hl">rinde</span>?</h1>
+        <p class="lead">Conectá tu cuenta y en minutos sabés <b>por qué tus publicaciones paradas no venden</b>, qué cambiar primero y <b>cuánto ganás de verdad</b> en cada venta, después de comisión, envío, cuotas, retenciones, costo y publicidad.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="/api/auth/login" id="cta-main">Diagnosticar mi cuenta gratis <i data-i="arrow"></i></a>
           <a class="btn btn-light" href="/demo">Ver demo sin registrarme</a>
         </div>
         <p class="trust"><i data-i="shield"></i> Solo lectura: Rinde nunca modifica, publica ni pausa nada en tu cuenta.</p>
       </div>
-      <div class="hero-shot" aria-hidden="true">
-        <div class="mock">
-          <div class="mock-head"><span class="small muted">Diagnóstico de tu cuenta</span><span class="tag tag-accent">25 publicaciones</span></div>
-          <div class="mock-big">3 problemas te están costando ventas</div>
-          <div class="mock-row"><span class="mock-title">Silla Gamer Ergonómica Reclinable</span><span class="tag tag-warn"><i data-i="cart"></i> Visitas sin ventas</span></div>
-          <div class="mock-row"><span class="mock-title">Freidora De Aire 4 Litros Digital</span><span class="tag tag-bad"><i data-i="down"></i> Pierde plata</span></div>
-          <div class="mock-row"><span class="mock-title">Funda Celular</span><span class="tag tag-warn"><i data-i="eyeoff"></i> Sin visitas</span></div>
-          <div class="mock-row"><span class="mock-title">Balanza Digital De Cocina 10kg</span><span class="tag tag-bad"><i data-i="alert"></i> Sin stock</span></div>
-          <div class="mock-row"><span class="mock-title">Auriculares Bluetooth In Ear TWS</span><span class="tag tag-ok"><i data-i="check"></i> Sana</span></div>
-        </div>
-      </div>
+      <figure class="ticket" aria-label="Ejemplo: desglose de una venta con Rinde" style="margin-block:0">
+        <div class="ticket-head"><span>Venta #2000009·0412</span><span>Ejemplo</span></div>
+        <div class="ticket-title">Freidora De Aire 4 Litros Digital 1400W</div>
+        <div class="ticket-row"><span>Precio de venta</span><span>$89.999</span></div>
+        <div class="ticket-row minus"><span>Comisión Premium</span><span>−$13.050</span></div>
+        <div class="ticket-row minus"><span>Cuotas sin interés</span><span>−$10.350</span></div>
+        <div class="ticket-row minus"><span>Envío a tu cargo</span><span>−$9.200</span></div>
+        <div class="ticket-row minus"><span>Retenciones IIBB</span><span>−$3.150</span></div>
+        <div class="ticket-row minus"><span>Costo del producto</span><span>−$61.000</span></div>
+        <div class="ticket-row minus"><span>Publicidad prorrateada</span><span>−$1.110</span></div>
+        <hr class="ticket-rule">
+        <div class="ticket-total"><span>Te quedó</span><span class="neg">−$7.861</span></div>
+        <div class="ticket-foot"><span class="tag tag-bad"><i data-i="down"></i> Pierde plata</span><span>Precio mínimo para reponer: <b class="num" style="color:var(--ink)">$116.752</b></span></div>
+      </figure>
     </div>
   </section>
 
@@ -62,10 +66,10 @@
         <p class="lead">El panel de Mercado Libre te muestra ventas, no ganancia. Y cuando una publicación se frena, nadie te dice por qué.</p>
       </div>
       <div class="problem-list">
-        <div class="card pcard"><span class="ico ico-warn"><i data-i="eyeoff"></i></span><div><h3>Publicaciones que nadie ve</h3><p class="muted small">Calidad baja, títulos flojos, sin Full ni Flex, fuera del catálogo. Te lo marcamos con los datos oficiales de calidad de Mercado Libre.</p></div></div>
-        <div class="card pcard"><span class="ico ico-warn"><i data-i="cart"></i></span><div><h3>Las ven, pero no las compran</h3><p class="muted small">Precio arriba de la competencia, pocas fotos, sin cuotas, preguntas sin responder. Te decimos cuál pesa más.</p></div></div>
-        <div class="card pcard"><span class="ico ico-bad"><i data-i="down"></i></span><div><h3>Venden y te hacen perder plata</h3><p class="muted small">Sumamos comisión, envío, cuotas, retenciones, costo y publicidad de cada venta. Si perdés, lo vas a ver.</p></div></div>
-        <div class="card pcard"><span class="ico ico-bad"><i data-i="money"></i></span><div><h3>Vendés por debajo de lo que cuesta reponer</h3><p class="muted small">Con inflación, el margen "a costo de compra" miente. Rinde te muestra también el margen a <b>costo de reposición</b>.</p></div></div>
+        <div class="pcard"><span class="ico ico-warn"><i data-i="eyeoff"></i></span><div><h3>Publicaciones que nadie ve</h3><p class="muted small">Calidad baja, títulos flojos, sin Full ni Flex, fuera del catálogo. Te lo marcamos con los datos oficiales de calidad de Mercado Libre.</p></div></div>
+        <div class="pcard"><span class="ico ico-warn"><i data-i="cart"></i></span><div><h3>Las ven, pero no las compran</h3><p class="muted small">Precio arriba de la competencia, pocas fotos, sin cuotas, preguntas sin responder. Te decimos cuál pesa más.</p></div></div>
+        <div class="pcard"><span class="ico ico-bad"><i data-i="down"></i></span><div><h3>Venden y te hacen perder plata</h3><p class="muted small">Sumamos comisión, envío, cuotas, retenciones, costo y publicidad de cada venta. Si perdés, lo vas a ver.</p></div></div>
+        <div class="pcard"><span class="ico ico-bad"><i data-i="money"></i></span><div><h3>Vendés por debajo de lo que cuesta reponer</h3><p class="muted small">Con inflación, el margen "a costo de compra" miente. Rinde te muestra también el margen a <b>costo de reposición</b>.</p></div></div>
       </div>
     </div>
   </section>
@@ -147,8 +151,8 @@
   <section class="section section-alt">
     <div class="wrap final-cta">
       <h2>Descubrí qué te está frenando las ventas</h2>
-      <p class="lead" style="margin:0 auto 18px">El primer diagnóstico es gratis y tarda unos minutos.</p>
-      <div class="cta-row" style="justify-content:center">
+      <p class="lead">El primer diagnóstico es gratis y tarda unos minutos.</p>
+      <div class="cta-row">
         <a class="btn btn-primary" href="/api/auth/login">Diagnosticar mi cuenta gratis <i data-i="arrow"></i></a>
         <a class="btn btn-light" href="/demo">Ver demo</a>
       </div>

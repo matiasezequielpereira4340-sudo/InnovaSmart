@@ -32,7 +32,7 @@ export const I = {
   user: s('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'),
   tag: s('<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L2 12V2h10l8.6 8.6a2 2 0 0 1 0 2.8z"/><path d="M7 7h.01"/>'),
 };
-export const LOGO_MARK = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 18 10 11l4 4 6-8" stroke="#7cf0c5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20" cy="7" r="2" fill="#fff"/></svg>';
+export const LOGO_MARK = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="ml" d="M4 18 10 11l4 4 6-8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle class="md" cx="20" cy="7" r="2"/></svg>';
 
 /** Reemplaza <i data-i="nombre"></i> por el SVG. */
 export function hydrateIcons(root = document) {
