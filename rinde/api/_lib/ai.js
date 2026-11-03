@@ -153,6 +153,7 @@ export async function generateSummary(model, ruleSummary) {
     `Publicaciones analizadas: ${model.rows.length}`,
     `Por categoría: ${Object.entries(model.counts).map(([k, v]) => `${k}=${v}`).join(', ')}`,
     `Ventas mensuales que se estiman perdidas: ${fmtMoney(model.lostTotal)} (estimado)`,
+    `Facturación real de los últimos 30 días: ${fmtMoney(model.revenue?.d30)}`,
     `Reputación del vendedor: ${model.seller?.reputation?.level_id || 'sin dato'}`,
     `Problemas rankeados por impacto (ya calculados, respetá el orden):`,
     ...model.problems.map((p, i) => `${i + 1}. ${p.label} — ${p.items.length} publicaciones — impacto estimado ${fmtMoney(p.impact)}/mes`),

@@ -42,7 +42,7 @@ ${a.title ? `<div style="font-weight:bold;margin:6px 0 2px">${esc(a.title)}</div
 export function weeklyEmail({ nickname, model, summary, appUrl }) {
   const k = model.kpis;
   const kpi = (label, value) => `<td style="padding:10px;background:#f6f7fb;border-radius:10px;text-align:center;width:33%"><div style="font-size:12px;color:#6b7194">${label}</div><div style="font-size:18px;font-weight:bold">${value}</div></td>`;
-  const probs = (summary?.problems || []).map((p, i) => `<tr><td style="padding:10px 0;border-bottom:1px solid #eceef5"><b>${i + 1}. ${esc(p.label)}</b><br><span style="font-size:14px;color:#3d4466">${esc(p.detail)} — ${esc(p.fix)}</span></td></tr>`).join('');
+  const probs = (summary?.problems || []).map((p, i) => `<tr><td style="padding:10px 0;border-bottom:1px solid #eceef5"><b>${i + 1}. ${esc(p.label)}</b><br><span style="font-size:14px;color:#3d4466">${esc(p.detail)} — ${esc((p.fix || '').replace(/:$/, '.'))}</span></td></tr>`).join('');
   const body = `<h1 style="font-size:22px;margin:0 0 6px">Tu semana en Mercado Libre</h1>
 <p style="margin:0 0 16px;color:#3d4466">Hola ${esc(nickname || '')}, ${esc(summary?.headline || '')}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="6"><tr>${kpi('Facturación 30 d', fmtMoney(k.revenue))}${kpi('Ganancia neta', k.net == null ? 'cargá costos' : fmtMoney(k.net))}${kpi('Margen', fmtPct(k.margin))}</tr></table>

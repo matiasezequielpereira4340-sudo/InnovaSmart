@@ -1,5 +1,5 @@
 // Reporte de Validación: compara, venta por venta, lo que calcula Rinde contra la facturación de MeLi y la orden.
-import { parseBilling, orderFees, rindeFees, FEE_KEYS, FEE_LABELS } from './billing.js';
+import { parseBilling, orderFees, rindeFees, categorize, FEE_KEYS, FEE_LABELS } from './billing.js';
 
 export const DIFF_ALERT = 0.02; // 2 %
 
@@ -107,4 +107,85 @@ export function scrub(value) {
     return o;
   }
   return value;
+}
+
+// ───────────── Liquidación real (Mercado Pago) vs "Te quedó" de Rinde ─────────────
+const n0 = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const money = (v) => '$' + Math.round(v).toLocaleString('es-AR');
+
+/** Lee un pago (/v1/payments de Mercado Pago o /collections de MeLi): neto recibido y cargos por concepto. */
+export function parseSettlement(body) {
+  if (!body || typeof body !== 'object') return null;
+  const p = body.collection && typeof body.collection === 'object' ? body.collection : body;
+  const net = p.transaction_details?.net_received_amount ?? p.net_received_amount ?? null;
+  const fees = Object.fromEntries(FEE_KEYS.map((k) => [k, 0]));
+  const lines = [];
+  const charges = Array.isArray(p.charges_details) ? p.charges_details.filter((c) => !c.accounts || c.accounts.from === 'collector') : [];
+  if (charges.length) {
+    for (const c of charges) {
+      const amt = n0(c.amounts?.original ?? c.amount) - n0(c.amounts?.refunded);
+      let k = c.type === 'tax' ? 'taxes' : categorize(`${c.name || ''} ${c.type || ''}`);
+      if (k === 'other' && c.type === 'fee') k = 'commission';
+      fees[k] += amt;
+      lines.push({ concept: c.name || c.type, type: c.type, key: k, amount: amt });
+    }
+  } else if (Array.isArray(p.fee_details)) {
+    for (const f of p.fee_details.filter((x) => !x.fee_payer || x.fee_payer === 'collector')) {
+      const t = String(f.type || '');
+      const k = /financ/.test(t) ? 'financing' : /shipping/.test(t) ? 'shipping' : /tax/.test(t) ? 'taxes' : 'commission';
+      fees[k] += n0(f.amount);
+      lines.push({ concept: t, type: t, key: k, amount: n0(f.amount) });
+    }
+  }
+  return { net: net == null ? null : Number(net), gross: n0(p.transaction_amount), buyerShipping: n0(p.shipping_amount ?? p.shipping_cost), status: p.status || null, fees, lines };
+}
+
+/**
+ * Compara por venta lo que muestra Rinde ("Te quedó") contra lo que Mercado Pago efectivamente liquidó.
+ * @param sale fila del reporte de validación
+ * @param stored fees que Rinde guardó para esa orden (lo que ve el usuario en la app), o null
+ * @param settlements [{ payment_id, raw: { status, body, source } }]
+ */
+export function compareSettlement(sale, stored, settlements) {
+  const parsed = settlements.map((s) => ({ id: s.payment_id, source: s.raw?.source || null, status: s.raw?.status ?? null, p: s.raw?.status === 200 ? parseSettlement(s.raw.body) : null }));
+  const ok = parsed.filter((x) => x.p && x.p.net != null && !['refunded', 'cancelled', 'rejected'].includes(x.p.status));
+  const shown = stored?.fees || Object.fromEntries((sale.rows || []).filter((r) => FEE_KEYS.includes(r.key)).map((r) => [r.key, r.rinde]));
+  const rindeTotal = FEE_KEYS.reduce((t, k) => t + n0(shown[k]), 0);
+  const out = {
+    gross: sale.gross, rindeNet: sale.gross - rindeTotal, rindeSource: stored?.fees_source || sale.source,
+    meliNet: null, diff: null, pct: null, alert: false, explain: null, concepts: [],
+    payments: parsed.map((x) => ({ id: x.id, source: x.source, status: x.status, pay_status: x.p?.status || null })),
+  };
+  if (!ok.length) {
+    out.explain = `No pudimos leer la liquidación (${parsed.map((x) => `pago ${x.id}: respuesta ${x.status ?? 'ninguna'}`).join(', ') || 'la venta no trae pagos'}).`;
+    return out;
+  }
+  // Lo que pagó el comprador por el envío entra al pago pero no es venta: se descuenta para comparar parejo.
+  out.buyerShipping = ok.reduce((t, x) => t + x.p.buyerShipping, 0);
+  out.meliNet = ok.reduce((t, x) => t + x.p.net, 0) - out.buyerShipping;
+  out.diff = out.rindeNet - out.meliNet;
+  out.pct = sale.gross ? out.diff / sale.gross : null;
+  out.alert = out.pct != null && Math.abs(out.pct) > DIFF_ALERT && Math.abs(out.diff) >= 1;
+  out.concepts = FEE_KEYS.map((k) => {
+    const m = ok.reduce((t, x) => t + x.p.fees[k], 0);
+    return { key: k, label: FEE_LABELS[k], rinde: n0(shown[k]), meli: m, diff: n0(shown[k]) - m };
+  });
+  out.mpLines = ok.flatMap((x) => x.p.lines);
+  if (out.alert) {
+    const worst = [...out.concepts].sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff))[0];
+    const residual = out.diff + out.concepts.reduce((t, c) => t + c.diff, 0);
+    out.explain = worst && Math.abs(worst.diff) >= Math.abs(residual)
+      ? `La diferencia viene sobre todo de ${worst.label.toLowerCase()}: Rinde descuenta ${money(worst.rinde)} y el pago muestra ${money(worst.meli)}.${worst.key === 'shipping' && worst.meli === 0 ? ' Mercado Libre puede cobrar el envío aparte (en la factura) y no en el pago.' : ''}`
+      : `Los cargos por concepto casi coinciden; la diferencia (${money(residual)}) está en el monto cobrado: descuentos, cupones, bonificaciones o envío.`;
+  }
+  return out;
+}
+
+/** Agrega a cada venta del reporte la comparación contra la liquidación real. */
+export function attachSettlements(report, calls, storedBy = {}) {
+  for (const sale of report.sales) sale.settlement = compareSettlement(sale, storedBy[sale.order_id]?.fees ? storedBy[sale.order_id] : null, calls[sale.order_id]?.settlements || []);
+  const sv = report.sales.map((x) => x.settlement).filter((x) => x.meliNet != null);
+  report.summary.settled = sv.length;
+  report.summary.settledAlerts = sv.filter((x) => x.alert).length;
+  return report;
 }

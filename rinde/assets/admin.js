@@ -15,6 +15,9 @@ let selUser = null;
 let run = null;
 let busy = false;
 let valError = '';
+let acct = null; // facturación real + estimado de la cuenta elegida
+let acctBusy = '';
+let acctMsg = '';
 
 const TABS = ['usuarios', 'cobros', 'pagos', 'validacion', 'conexiones'];
 const tab = () => { const h = location.hash.replace('#', ''); return TABS.includes(h) ? h : 'usuarios'; };
@@ -258,6 +261,79 @@ function saleCard(s) {
   </article>`;
 }
 
+function settlementTable(r) {
+  const rows = r.sales.filter((s) => s.settlement);
+  if (!rows.length) return '';
+  const pct = (v) => (v == null ? '' : ` · ${(v * 100).toFixed(1).replace('.', ',')} %`);
+  const cell = (st) => (st.diff == null ? '<span class="muted">sin dato</span>' : st.alert ? `<span class="tag tag-bad">${I.alert} ${(st.diff > 0 ? '+' : '') + fmtMoney(st.diff)}${pct(st.pct)}</span>` : `<span class="tag tag-ok">${I.check} ${Math.abs(st.diff) < 1 ? 'igual' : (st.diff > 0 ? '+' : '') + fmtMoney(st.diff)}${pct(st.pct)}</span>`);
+  const notes = rows.filter((s) => s.settlement.explain);
+  return `<section class="card" style="padding:0;overflow:hidden;margin-bottom:16px" aria-labelledby="liq-h">
+    <div style="padding:14px 16px"><h2 id="liq-h" style="font-size:1.15rem;margin:0">"Te quedó" de Rinde vs lo que liquidó Mercado Libre</h2>
+    <div class="small muted">Por venta: precio, lo que muestra Rinde, lo que realmente se acreditó (neto del pago en Mercado Pago, sin el envío que pagó el comprador) y la diferencia. Rojo = más de 2 %.</div></div>
+    <div class="mobile-only" style="border-top:1px solid var(--line)">${rows.map((s, i) => `<div style="padding:10px 16px;border-bottom:1px dashed var(--line);display:grid;gap:4px">
+      <div class="small"><b>${i + 1}.</b> ${esc(s.title.length > 46 ? s.title.slice(0, 44) + '…' : s.title)}</div>
+      <div class="tiny muted num">Precio ${fmtMoney(s.settlement.gross)} · Rinde ${fmtMoney(s.settlement.rindeNet)} · MeLi ${s.settlement.meliNet == null ? 'sin dato' : fmtMoney(s.settlement.meliNet)}</div>
+      <div>${cell(s.settlement)}</div></div>`).join('')}</div>
+    <div class="table-wrap desktop-only" style="border:0;border-top:1px solid var(--line);border-radius:0">
+      <table class="data liq-table"><thead><tr><th>Venta</th><th>Precio</th><th>Rinde: te quedó</th><th>MeLi liquidó</th><th>Diferencia</th></tr></thead>
+      <tbody>${rows.map((s, i) => `<tr><td><b>${i + 1}.</b> <span class="small">${esc(s.title.length > 42 ? s.title.slice(0, 40) + '…' : s.title)}</span><div class="tiny muted num">#${esc(s.order_id)}</div></td><td class="num">${fmtMoney(s.settlement.gross)}</td><td class="num">${fmtMoney(s.settlement.rindeNet)}</td><td class="num">${s.settlement.meliNet == null ? '<span class="muted">sin dato</span>' : fmtMoney(s.settlement.meliNet)}</td><td>${cell(s.settlement)}</td></tr>`).join('')}</tbody></table>
+    </div>
+    ${notes.length ? `<ul class="small" style="margin:0;padding:12px 16px 14px 34px;border-top:1px dashed var(--line);display:grid;gap:6px">${notes.map((s) => `<li><b>Venta ${rows.indexOf(s) + 1}:</b> ${esc(s.settlement.explain)}</li>`).join('')}</ul>` : ''}
+  </section>`;
+}
+
+function accountCard() {
+  const a = acct;
+  const money2 = (v) => (v == null ? 'sin dato' : fmtMoney(v));
+  return `<section class="card" style="display:grid;gap:10px;margin-bottom:14px" aria-labelledby="acc-h">
+    <h2 id="acc-h" style="font-size:1.15rem;margin:0">Facturación real y diagnóstico de esta cuenta</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-light btn-sm" id="acc-load" ${acctBusy ? 'disabled' : ''}>${I.chart} Ver facturación real</button>
+      <button class="btn btn-light btn-sm" id="acc-regen" ${acctBusy ? 'disabled' : ''}>${acctBusy === 'regen' ? `${I.loader.replace('<svg', '<svg class="spin"')} Releyendo la cuenta…` : `${I.refresh} Releer y regenerar diagnóstico (no gasta el gratis)`}</button>
+    </div>
+    ${acctMsg ? `<div class="small" role="status">${esc(acctMsg)}</div>` : ''}
+    ${a?.ready ? `<div class="kpis">
+      <div class="kpi"><div class="k-label">Facturación 30 días</div><div class="k-value num">${money2(a.revenue.d30)}</div><div class="k-sub">${a.revenue.orders30 ?? '—'} ventas pagadas</div></div>
+      <div class="kpi"><div class="k-label">Facturación 90 días</div><div class="k-value num">${money2(a.revenue.d90)}</div><div class="k-sub">${a.has180 ? 'órdenes pagadas' : 'falta releer la cuenta'}</div></div>
+      <div class="kpi ${a.sanity.exceeds30 ? 'is-bad' : 'is-ok'}"><div class="k-label">Estimado del titular</div><div class="k-value num">${fmtMoney(a.lostTotal)}</div><div class="k-sub">${a.sanity.exceeds30 ? 'MAYOR que lo facturado en 30 días' : 'menor que lo facturado en 30 días'}</div></div>
+      <div class="kpi"><div class="k-label">Promedio mensual 6 meses</div><div class="k-value num">${money2(a.revenue.monthlyAvg180)}</div><div class="k-sub">techo del estimado</div></div>
+    </div>
+    <div class="small muted">Titular: ${esc(a.headline)} · Abandonadas: ${a.abandoned}${a.problems.length ? ` · ${a.problems.map((p) => `${esc(p.label)}: ${esc(p.detail)}`).join(' · ')}` : ''}</div>` : a && !a.ready ? '<div class="small muted">La cuenta todavía se está leyendo. Probá "Releer y regenerar".</div>' : ''}
+  </section>`;
+}
+
+async function loadAccount() {
+  if (DEMO) {
+    const [{ buildModel, buildRuleSummary }, { getDemoData }] = await Promise.all([import('../shared/model.js'), import('../shared/demo-data.js')]);
+    const m = buildModel(getDemoData());
+    const rule = buildRuleSummary(m);
+    acct = { ready: true, has180: false, revenue: m.revenue, lostTotal: m.lostTotal, sanity: m.sanity, counts: m.counts, headline: rule.headline, problems: rule.problems.map((p) => ({ label: p.label, detail: p.detail })), abandoned: m.abandoned?.count || 0 };
+    acctMsg = 'Datos de ejemplo.';
+    return render();
+  }
+  acctBusy = 'load'; acctMsg = ''; render();
+  try { acct = await call('GET', null, `?view=account&user_id=${encodeURIComponent(selUser)}`); } catch (e) { acctMsg = e.message; }
+  acctBusy = ''; render();
+}
+
+async function regenAccount() {
+  if (DEMO) { acctMsg = 'En el modo ejemplo no hay cuenta real.'; return render(); }
+  acctBusy = 'regen'; acctMsg = 'Leyendo publicaciones y ventas de Mercado Libre (solo lectura). Puede tardar unos minutos en cuentas grandes: no cierres esta pestaña.'; render();
+  try {
+    let d = await call('POST', { action: 'resync', user_id: selUser, start: true });
+    for (let i = 0; i < 60 && !d.done; i++) {
+      const sp = d.sync || {};
+      acctMsg = `${sp.label || 'Leyendo'}… ${sp.phase === 'items' ? `${sp.done}/${sp.total} publicaciones` : sp.phase === 'orders' ? `${sp.orders} ventas` : sp.phase === 'billing' ? `${sp.billing}/${sp.billingTotal} cargos` : ''}`;
+      render();
+      d = await call('POST', { action: 'resync', user_id: selUser });
+    }
+    acctMsg = d.done ? 'Listo: diagnóstico regenerado con la fórmula nueva. No se usó el diagnóstico gratis.' : 'Sigue leyendo: tocá el botón de nuevo para continuar.';
+    await loadAccount();
+    return;
+  } catch (e) { acctMsg = e.message; }
+  acctBusy = ''; render();
+}
+
 function validationView() {
   const connected = users.filter((u) => u.connected);
   const r = run?.report;
@@ -274,6 +350,7 @@ function validationView() {
     ${valError ? `<div class="notice notice-bad" role="alert">${I.alert}<div>${esc(valError)}</div></div>` : ''}
     ${run ? `<div class="tiny muted">Corrida del ${dateTime(run.created_at || r.created_at)}${DEMO ? ' · simulada' : ''}</div>` : ''}
   </div>
+  ${connected.length || DEMO ? accountCard() : ''}
   ${r ? `
   ${sm.ordersError ? `<div class="notice notice-bad" style="margin-bottom:12px">${I.alert}<div>${esc(sm.ordersError)}</div></div>` : ''}
   <div class="kpis" style="margin-bottom:12px${r.sales.length ? '' : ';display:none'}">
@@ -285,15 +362,18 @@ function validationView() {
   <div class="grid" style="margin-bottom:16px${r.sales.length ? '' : ';display:none'}">
     <div class="notice notice-info">${I.info}<div>La facturación respondió con el parámetro <b class="num">${esc(sm.billingParam)}</b>. ${sm.noTaxes ? `En ${sm.noTaxes} de ${sm.withBilling} ventas facturadas no vinieron retenciones.` : ''} Competencia sin dato: ${c.catalogoSinDato} de catálogo y ${c.busquedaSinDato} sin catálogo.</div></div>
   </div>
-  ${r.sales.length ? `<div class="grid" style="gap:12px">${r.sales.map(saleCard).join('')}</div>` : `<div class="notice notice-info" role="status">${I.info}<div><b>Sin ventas en los últimos 90 días: la rentabilidad aparece cuando vendas.</b> Cuando esta cuenta tenga ventas, acá vas a ver cada una comparada contra la facturación de Mercado Libre.<div class="small" style="margin-top:6px">Competencia sin dato: ${c.sinDato} de ${c.total} publicaciones.</div></div></div>`}
+  ${settlementTable(r)}
+  ${r.sales.length ? `<h2 style="font-size:1.15rem;margin:0 0 8px">Detalle por venta (cargos)</h2><div class="grid" style="gap:12px">${r.sales.map(saleCard).join('')}</div>` : `<div class="notice notice-info" role="status">${I.info}<div><b>Sin ventas en los últimos 90 días: la rentabilidad aparece cuando vendas.</b> Cuando esta cuenta tenga ventas, acá vas a ver cada una comparada contra la facturación de Mercado Libre.<div class="small" style="margin-top:6px">Competencia sin dato: ${c.sinDato} de ${c.total} publicaciones.</div></div></div>`}
   <details class="card" style="margin-top:16px"><summary style="cursor:pointer;font-weight:600">Respuesta cruda de Mercado Libre (sin tokens ni datos del comprador)</summary>
     <p class="small muted" style="margin:10px 0">Así devolvió los datos Mercado Libre. Sirve para revisar el formato real.</p>
     <button class="btn btn-light btn-sm" id="vcopy" type="button">Copiar</button>
     <pre id="vraw" style="margin-top:10px;max-height:420px;overflow:auto;background:var(--sunken);padding:12px;border-radius:8px;font:12px/1.5 var(--font-num);white-space:pre">${esc(JSON.stringify(run.raw, null, 2))}</pre>
   </details>` : (connected.length ? '<div class="empty">Elegí la cuenta y tocá "Validar últimas 10 ventas".</div>' : '')}`;
   hydrateIcons(root);
-  document.getElementById('vu')?.addEventListener('change', async (e) => { selUser = e.target.value; run = null; await loadLastRun(); });
+  document.getElementById('vu')?.addEventListener('change', async (e) => { selUser = e.target.value; run = null; acct = null; acctMsg = ''; await loadLastRun(); });
   document.getElementById('vrun')?.addEventListener('click', runValidation);
+  document.getElementById('acc-load')?.addEventListener('click', loadAccount);
+  document.getElementById('acc-regen')?.addEventListener('click', regenAccount);
   document.getElementById('vcopy')?.addEventListener('click', async () => {
     const t = document.getElementById('vraw').textContent;
     try { await navigator.clipboard.writeText(t); document.getElementById('vcopy').textContent = 'Copiado'; } catch { const sel = getSelection(); const rg = document.createRange(); rg.selectNodeContents(document.getElementById('vraw')); sel.removeAllRanges(); sel.addRange(rg); }
@@ -301,10 +381,10 @@ function validationView() {
 }
 
 async function demoRun() {
-  const [{ buildValidationReport, scrub }, { getValidationDemoInput }] = await Promise.all([import('../shared/validation.js'), import('../shared/validation-demo.js')]);
+  const [{ buildValidationReport, attachSettlements, scrub }, { getValidationDemoInput }] = await Promise.all([import('../shared/validation.js'), import('../shared/validation-demo.js')]);
   const input = getValidationDemoInput();
   if (new URLSearchParams(location.search).has('sinventas')) { input.orders = []; input.calls = {}; }
-  run = { report: buildValidationReport(input), raw: scrub({ orders_search: { status: 200, body: { results: input.orders } }, por_venta: input.calls }), created_at: new Date().toISOString() };
+  run = { report: attachSettlements(buildValidationReport(input), input.calls), raw: scrub({ orders_search: { status: 200, body: { results: input.orders } }, por_venta: input.calls }), created_at: new Date().toISOString() };
 }
 
 async function loadLastRun() {
@@ -377,6 +457,7 @@ async function load() {
     users = JSON.parse(JSON.stringify(DEMO_ADMIN_USERS)).map((u, i) => ({ ...u, connected: i === 0 }));
     selUser = users[0].id;
     if (tab() === 'validacion' && !run) await demoRun();
+    if (!acct) await loadAccount();
     return render();
   }
   try {

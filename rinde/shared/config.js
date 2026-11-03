@@ -45,8 +45,8 @@ export const LIMITS = {
 };
 
 export const CATEGORIES = {
-  OPERATIVO: { key: 'OPERATIVO', label: 'Error operativo', short: 'Operativo', tone: 'bad', icon: 'alert', order: 1,
-    desc: 'Sin stock, pausada, con infracción o bajo revisión.' },
+  OPERATIVO: { key: 'OPERATIVO', label: 'Sin stock o pausadas', short: 'Sin stock o pausadas', tone: 'bad', icon: 'alert', order: 1,
+    desc: 'Hoy no pueden vender: sin stock, pausadas, con infracción o bajo revisión.' },
   PIERDE_PLATA: { key: 'PIERDE_PLATA', label: 'Vende pero pierde plata', short: 'Pierde plata', tone: 'bad', icon: 'down', order: 2,
     desc: 'Vende, pero después de costos y cargos no te deja ganancia.' },
   SIN_VISITAS: { key: 'SIN_VISITAS', label: 'Sin visitas', short: 'Sin visitas', tone: 'warn', icon: 'eyeoff', order: 3,

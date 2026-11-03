@@ -40,7 +40,21 @@ export function getValidationDemoInput() {
       if (i === 2) results.push(line('BONUS', 'BCV', 'Bonificación por campaña', 1500));
       billing = { status: 200, param: 'order_ids', body: { results, paging: { total: results.length, limit: 150 } } };
     }
-    calls[oid] = { billing, shipment: { status: 200, body: { receiver: { cost: 0 }, senders: [{ user_id: 123456789, cost: env, compensation: 0 }] } } };
+    // Liquidación simulada de Mercado Pago: en la 3 aparece una retención de IIBB que la facturación no trae,
+    // en la 9 el envío no se descuenta del pago (se cobra aparte), y la 5 no se pudo leer.
+    const tax = i === 2 ? Math.round(gross * 0.03) : 0;
+    const shipInPay = i === 8 ? 0 : env;
+    const charges = [
+      { name: 'meli_fee', type: 'fee', accounts: { from: 'collector' }, amounts: { original: i === 1 ? saleFee : cv, refunded: 0 } },
+      ...(csi ? [{ name: 'financing_fee', type: 'fee', accounts: { from: 'collector' }, amounts: { original: csi, refunded: 0 } }] : []),
+      ...(shipInPay ? [{ name: 'shipping', type: 'shipping', accounts: { from: 'collector' }, amounts: { original: shipInPay, refunded: 0 } }] : []),
+      ...(tax ? [{ name: 'retencion_iibb', type: 'tax', accounts: { from: 'collector' }, amounts: { original: tax, refunded: 0 } }] : []),
+    ];
+    const net = gross - charges.reduce((t, c) => t + c.amounts.original, 0) + (i === 2 ? 1500 : 0);
+    const settlement = i === 4
+      ? { status: 403, body: null, source: null }
+      : { status: 200, source: 'mercadopago', body: { id: 5500 + i, status: 'approved', transaction_amount: gross, shipping_amount: 0, transaction_details: { net_received_amount: net }, charges_details: charges } };
+    calls[oid] = { billing, shipment: { status: 200, body: { receiver: { cost: 0 }, senders: [{ user_id: 123456789, cost: env, compensation: 0 }] } }, settlements: [{ payment_id: 5500 + i, raw: settlement }] };
   });
   return { orders, calls, items: d.items, ordersCall: { status: 200 } };
 }

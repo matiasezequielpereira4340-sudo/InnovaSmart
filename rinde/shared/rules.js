@@ -113,18 +113,48 @@ export function isNoDemand(it) {
   return !!((lowVisits && goodListing) || saturated);
 }
 
-/** Estimación de ventas mensuales perdidas (en $) por publicación. Se muestra como "estimado". */
+/**
+ * Historial propio de la publicación (últimos 180 días de órdenes reales).
+ * Si la sincronización es vieja y no trae 180 días, usamos 90 como piso (nunca inventamos ventas).
+ */
+export function itemHistory(it) {
+  const units180 = it.sales180 ?? it.sales90 ?? 0;
+  const revenue180 = it.revenue180 ?? units180 * (it.price || 0);
+  const avgPrice = units180 > 0 ? revenue180 / units180 : it.price || 0;
+  return {
+    units180,
+    revenue180,
+    monthlyRevenue: revenue180 / 6, // promedio mensual de los últimos 6 meses
+    revenue30: (it.sales30 || 0) * avgPrice,
+    abandoned: units180 === 0, // nunca vendió o no vende hace más de 180 días
+  };
+}
+
+// Motivos que son recomendación, no plata en juego.
+const NON_MONETARY = new Set(['sin_full_flex']);
+
+/** Problema principal de la publicación: el de más peso que sí mueve ventas. Cada publicación cuenta una sola vez. */
+export function primaryReason(cls) {
+  const list = (cls.reasons || []).filter((x) => x.weight > 0 && !NON_MONETARY.has(x.code));
+  if (!list.length) return (cls.reasons || []).some((x) => x.code === 'sin_full_flex') ? (cls.category === 'SIN_VENTAS' ? 'conversion_general' : 'visibilidad_general') : null;
+  return list.reduce((a, b) => (b.weight > a.weight ? b : a)).code;
+}
+
+/**
+ * Ventas mensuales que podría estar perdiendo UNA publicación (en $). Se muestra como "estimado".
+ * Sale solo de SUS ventas reales: lo que facturaba por mes en los últimos 6 meses, menos lo que factura hoy.
+ * Si no vendió nada en 180 días aporta $0 (va a "Publicaciones abandonadas").
+ * Por construcción, la suma nunca supera el promedio mensual facturado de la cuenta en los últimos 6 meses.
+ */
 export function lostSalesEstimate(it, cls) {
-  const price = it.price || 0;
+  const h = itemHistory(it);
+  if (h.abandoned) return 0;
   switch (cls.category) {
-    case 'OPERATIVO': {
-      const monthly = Math.max((it.sales90 || 0) / 3, it.sales30 || 0, 1);
-      return monthly * price;
-    }
+    case 'OPERATIVO': // hoy no puede vender: se pierde lo que vendía por mes
+      return h.monthlyRevenue;
     case 'SIN_VISITAS':
-      return cls.noDemand ? 0 : Math.max(0, T.VISITS_MIN_30D - (it.visits30 || 0)) * T.CONVERSION_TARGET * price;
-    case 'SIN_VENTAS':
-      return Math.max(0, (it.visits30 || 0) * T.CONVERSION_TARGET - (it.sales30 || 0)) * price;
+    case 'SIN_VENTAS': // vende menos que su propio promedio
+      return Math.max(0, h.monthlyRevenue - h.revenue30);
     default:
       return 0;
   }
@@ -155,25 +185,38 @@ const PROBLEM_LABELS = {
 };
 export { PROBLEM_LABELS };
 
+const TOP_N = 10;
+const topItems = (list) => [...list]
+  .sort((a, b) => itemHistory(b.it).units180 - itemHistory(a.it).units180 || itemHistory(b.it).revenue180 - itemHistory(a.it).revenue180)
+  .slice(0, TOP_N)
+  .map((r) => ({ id: r.it.id, title: r.it.title, sold: itemHistory(r.it).units180, permalink: r.it.permalink || null }));
+
 /**
- * Ranking de problemas de la cuenta por impacto estimado en ventas.
- * Reparte el impacto de cada publicación entre sus motivos según su peso.
+ * Ranking de problemas: cada publicación entra UNA sola vez, en su problema principal, con su propio estimado.
+ * Las que no vendieron en 180 días van aparte (abandoned) y "Sin Full ni Flex" es solo recomendación (tips).
  */
 export function rankProblems(rows) {
   const agg = {};
+  const abandoned = [];
+  const fullFlex = [];
   for (const r of rows) {
-    const reasons = (r.cls.reasons || []).filter((x) => x.weight > 0);
-    if (!reasons.length) continue;
-    const totalW = reasons.reduce((s, x) => s + x.weight, 0);
-    const lost = r.lost ?? 0;
+    if ((r.cls.reasons || []).some((x) => x.code === 'sin_full_flex')) fullFlex.push(r);
+    const code = primaryReason(r.cls);
     const loss = r.profit?.net < 0 ? -r.profit.net : 0;
-    for (const x of reasons) {
-      const a = (agg[x.code] ||= { code: x.code, label: PROBLEM_LABELS[x.code] || x.code, items: [], impact: 0 });
-      a.items.push(r.it.id);
-      a.impact += ((lost + loss) * x.weight) / totalW;
-    }
+    if (!code) continue;
+    if (itemHistory(r.it).abandoned && !loss) { abandoned.push(r); continue; }
+    const a = (agg[code] ||= { code, label: PROBLEM_LABELS[code] || code, rows: [], impact: 0 });
+    a.rows.push(r);
+    a.impact += (r.lost || 0) + loss;
   }
-  return Object.values(agg).sort((a, b) => b.impact - a.impact || b.items.length - a.items.length);
+  const problems = Object.values(agg)
+    .map((a) => ({ code: a.code, label: a.label, impact: a.impact, items: a.rows.map((r) => r.it.id), top: topItems(a.rows), more: Math.max(0, a.rows.length - TOP_N) }))
+    .sort((a, b) => b.impact - a.impact || b.items.length - a.items.length);
+  return {
+    problems,
+    abandoned: { count: abandoned.length, items: abandoned.map((r) => r.it.id), top: abandoned.slice(0, TOP_N).map((r) => ({ id: r.it.id, title: r.it.title, sold: 0, permalink: r.it.permalink || null })), more: Math.max(0, abandoned.length - TOP_N) },
+    tips: fullFlex.length ? [{ code: 'sin_full_flex', label: PROBLEM_LABELS.sin_full_flex, count: fullFlex.length, top: topItems(fullFlex), more: Math.max(0, fullFlex.length - TOP_N) }] : [],
+  };
 }
 
 // ─────────────────────────────── Plan de acción por reglas ─────────────────

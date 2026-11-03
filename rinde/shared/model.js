@@ -39,7 +39,8 @@ export function buildModel(data) {
   const counts = Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, 0]));
   rows.forEach((r) => counts[r.cls.category]++);
 
-  const problems = rankProblems(rows).slice(0, 3);
+  const ranked = rankProblems(rows);
+  const problems = ranked.problems.slice(0, 3);
 
   // KPIs de rentabilidad (solo productos con costo cuentan para ganancia)
   const withSales = rows.filter((r) => r.profit.units > 0);
@@ -63,13 +64,30 @@ export function buildModel(data) {
 
   const alerts = buildAlerts({ rows, seller, prevReputation: data.prevReputation });
   const lostTotal = rows.reduce((s, r) => s + (r.lost || 0), 0);
-  return { rows, counts, problems, kpis, alerts, lostTotal, seller };
+
+  // Facturación real (órdenes pagadas). 30 días sale de las ventas cargadas; 90/180 de la sincronización.
+  const rev = data.revenue || null;
+  const revenue30 = rev?.d30 ?? lines.reduce((s, l) => s + (l.qty || 0) * (l.unit_price || 0), 0);
+  const revenueReal = {
+    d30: revenue30,
+    d90: rev?.d90 ?? null,
+    d180: rev?.d180 ?? null,
+    monthlyAvg180: rev?.d180 != null ? rev.d180 / 6 : null,
+    orders30: rev?.orders30 ?? new Set(lines.map((l) => l.order_id)).size,
+  };
+  // Control: el estimado no debería superar lo que se factura por mes. Si pasa, se marca para revisar (no se tapa).
+  const sanity = {
+    exceeds30: revenue30 > 0 && lostTotal > revenue30,
+    exceedsAvg: revenueReal.monthlyAvg180 != null && lostTotal > revenueReal.monthlyAvg180 + 1,
+  };
+  const hasAnyCost = rows.some((r) => r.profit.hasCost);
+  return { rows, counts, problems, allProblems: ranked.problems, abandoned: ranked.abandoned, tips: ranked.tips, kpis, alerts, lostTotal, revenue: revenueReal, sanity, hasAnyCost, seller };
 }
 
 import { fmtMoney } from './rules.js';
 const FIX_HINT = {
-  sin_stock: 'Reponé stock en las que más vendían.',
-  pausada: 'Reactivá las pausadas que tenían ventas.',
+  sin_stock: 'Reponé stock, empezando por las que más vendían:',
+  pausada: 'Reactivá primero las que más vendían:',
   infraccion: 'Corregí la infracción desde la publicación.',
   bajo_revision: 'Completá lo que pide Mercado Libre.',
   calidad_baja: 'Completá las mejoras de calidad que marca Mercado Libre.',
@@ -77,7 +95,7 @@ const FIX_HINT = {
   titulo_corto: 'Reescribí los títulos con palabras clave.',
   publicacion_gratuita: 'Pasá las gratuitas a Clásica o Premium.',
   publicacion_clasica: 'Probá Premium en las de ticket alto.',
-  sin_full_flex: 'Sumá Flex o Full.',
+  sin_full_flex: 'Sumá Flex o Full en las que más venden:',
   sin_envio_gratis: 'Ofrecé envío gratis donde el margen lo banque.',
   fuera_catalogo: 'Competí en el catálogo.',
   pocas_fotos: 'Sumá fotos (mínimo 6).',
@@ -91,23 +109,35 @@ const FIX_HINT = {
   conversion_general: 'Mejorá foto principal y descripción.',
 };
 
-export const LOST_EXPLAIN = 'Es una estimación, no plata que perdiste. Para las publicaciones pausadas o sin stock tomamos lo que vendían antes (o una venta por mes si no vendían); para las que tienen pocas visitas, cuánto venderían con 60 visitas y una conversión de 1,5 %; para las que tienen visitas y no venden, la diferencia con esa misma conversión.';
+export const LOST_EXPLAIN = 'Es una estimación, no plata que perdiste. Sale solo de tus ventas reales de los últimos 6 meses: para cada publicación miramos cuánto facturaba por mes en promedio. Si hoy no puede vender (sin stock, pausada, con infracción), contamos ese promedio; si vende menos que antes, contamos la diferencia. Cada publicación se cuenta una sola vez, en su problema principal. Las que no vendieron nada en 6 meses no suman (las ves aparte como "abandonadas") y Full/Flex es solo una recomendación. Por eso este número nunca puede ser mayor a lo que facturaste en promedio por mes.';
+
+const itemsLine = (top, more) => top.map((t) => ({ title: t.title, sold: t.sold, permalink: t.permalink, id: t.id })).concat(more ? [{ more }] : []);
 
 /** Resumen de cuenta por reglas (respaldo de la IA y base de datos para ella). */
 export function buildRuleSummary(model) {
   const p = model.problems;
+  const rev30 = model.revenue?.d30;
   return {
     headline: model.lostTotal > 0
       ? `Ventas que podrías estar perdiendo: ~${fmtMoney(model.lostTotal)}/mes (estimado)`
       : p.length ? 'No vemos ventas perdidas importantes, pero hay cosas para mejorar.' : 'Tu cuenta está sana. Seguí así y cargá tus costos para controlar el margen.',
+    revenueNote: rev30 != null ? `Tu facturación de los últimos 30 días: ${fmtMoney(rev30)}` : null,
     explain: model.lostTotal > 0 ? LOST_EXPLAIN : null,
     problems: p.map((x) => ({
       label: x.label,
-      detail: `${x.items.length} publicación(es) · ${x.impact > 0 ? `ventas estimadas en juego ~${fmtMoney(x.impact)}/mes` : 'sin impacto estimado en ventas'}`,
+      detail: `${x.items.length} publicación(es) · ${x.impact > 0 ? (['margen_negativo', 'debajo_reposicion'].includes(x.code) ? `perdiste ~${fmtMoney(x.impact)} en los últimos 30 días (con tus costos cargados)` : `ventas estimadas en juego ~${fmtMoney(x.impact)}/mes`) : 'sin impacto estimado en ventas'}`,
       fix: FIX_HINT[x.code] || '',
       items: x.items,
+      top: itemsLine(x.top || [], x.more),
     })),
-    first: p[0] ? FIX_HINT[p[0].code] : null,
+    abandoned: model.abandoned?.count ? {
+      label: 'Publicaciones abandonadas',
+      detail: `${model.abandoned.count} publicación(es) sin ninguna venta en los últimos 6 meses. No suman al estimado.`,
+      fix: 'Decidí cuáles mejorar a fondo y cuáles cerrar: ocupan stock y atención.',
+      top: itemsLine(model.abandoned.top, model.abandoned.more),
+    } : null,
+    tips: (model.tips || []).map((t) => ({ label: 'Sugerencia', detail: `Si en algún momento querés acelerar entregas, Flex o Full ayudan a posicionar. No lo contamos como plata perdida.`, small: true })),
+    first: p[0] ? (FIX_HINT[p[0].code] || '').replace(/:$/, '.') : null,
     source: 'reglas',
   };
 }

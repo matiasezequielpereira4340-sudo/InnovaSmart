@@ -160,7 +160,10 @@ function diagnosisView() {
   const sum = S.summary || buildRuleSummary(m);
   const canRegen = DEMO || S.paid || S.user?.can_regenerate;
   const total = m.rows.length;
-  const tiles = Object.values(CATEGORIES).map((c) => `<button class="cat-tile ${c.tone}" data-filter="${c.key}" aria-label="Filtrar ${esc(c.label)}: ${m.counts[c.key]}"><span class="n">${m.counts[c.key]}</span><span class="l">${I[c.icon]} ${esc(c.short)}</span></button>`).join('');
+  const noCosts = m.hasAnyCost === false;
+  const tiles = Object.values(CATEGORIES).map((c) => (c.key === 'PIERDE_PLATA' && noCosts)
+    ? `<a class="cat-tile ${c.tone} is-pending" href="#/rentabilidad" aria-label="Pierde plata: cargá tus costos para calcularlo"><span class="n n-text">Cargá tus costos para calcularlo</span><span class="l">${I[c.icon]} ${esc(c.short)}</span></a>`
+    : `<button class="cat-tile ${c.tone}" data-filter="${c.key}" aria-label="Filtrar ${esc(c.label)}: ${m.counts[c.key]}"><span class="n">${m.counts[c.key]}</span><span class="l">${I[c.icon]} ${esc(c.short)}</span></button>`).join('');
   const chips = [['TODAS', 'Todas', total, 'search'], ...Object.values(CATEGORIES).map((c) => [c.key, c.short, m.counts[c.key], c.icon])]
     .map(([k, l, n, ic]) => `<button class="chip" data-filter="${k}" aria-pressed="${S.filter === k}">${I[ic]} ${esc(l)} <span class="count">${n}</span></button>`).join('');
   const rows = sortedRows().filter((r) => S.filter === 'TODAS' || r.cls.category === S.filter);
@@ -177,7 +180,10 @@ function diagnosisView() {
     <section class="summary-card" aria-labelledby="sum-h">
       <div class="label">Resumen de la cuenta · ${total} publicaciones</div>
       <h2 id="sum-h">${esc(sum.headline)}</h2>
-      <div class="problems">${(sum.problems || []).map((p) => `<div class="problem"><b>${esc(p.label)}</b><span>${esc(p.detail)}${p.fix ? ` — ${esc(p.fix)}` : ''}</span></div>`).join('') || '<div class="problem"><b>Sin problemas graves</b><span>Tu cuenta está sana.</span></div>'}</div>
+      ${sum.revenueNote ? `<div class="rev-note">${esc(sum.revenueNote)}</div>` : ''}
+      <div class="problems">${(sum.problems || []).map((p) => problemBlock(p)).join('') || '<div class="problem"><b>Sin problemas graves</b><span>Tu cuenta está sana.</span></div>'}</div>
+      ${sum.abandoned ? `<div class="problems problems-extra">${problemBlock(sum.abandoned, 'Abandonadas')}</div>` : ''}
+      ${(sum.tips || []).length ? sum.tips.map((t) => `<p class="tip-line">${I.info} ${esc(t.detail)}</p>`).join('') : ''}
       ${sum.first ? `<div class="first">${I.arrow}<div><b>Qué arreglar primero:</b> ${esc(sum.first)}</div></div>` : ''}
       ${sum.explain ? `<details class="meta" style="margin-top:12px"><summary style="cursor:pointer;color:var(--panel-ink);font-weight:600">¿Cómo calculamos este número?</summary><p style="margin:6px 0 0">${esc(sum.explain)}</p></details>` : ''}
       <div class="meta">${sum.source === 'ia' ? 'Las recomendaciones las redacta la IA con tus datos reales; los montos los calculamos nosotros.' : 'Resumen calculado con tus datos reales.'}</div>
@@ -191,6 +197,18 @@ function diagnosisView() {
   <h2 style="margin:30px 0 10px;font-size:1.4rem">Publicaciones</h2>
   <div class="cat-filter" role="toolbar" aria-label="Filtrar por categoría">${chips}</div>
   <div class="items">${rows.map(itemCard).join('') || '<div class="empty">No hay publicaciones en esta categoría.</div>'}</div>`;
+}
+
+function topList(top) {
+  if (!top?.length) return '';
+  const lis = top.map((t) => t.more
+    ? `<li class="more">y ${t.more} más</li>`
+    : `<li>${t.permalink && t.permalink !== '#' ? `<a href="${esc(t.permalink)}" target="_blank" rel="noopener">${esc(t.title)}</a>` : esc(t.title)} <span class="sold">${t.sold ? `${t.sold} vendida${t.sold === 1 ? '' : 's'} en 6 meses` : 'sin ventas en 6 meses'}</span></li>`).join('');
+  return `<ol class="top-items">${lis}</ol>`;
+}
+
+function problemBlock(p, tag) {
+  return `<div class="problem${tag ? ' problem-tag' : ''}">${tag ? `<span class="ptag">${esc(tag)}</span>` : ''}<b>${esc(p.label)}</b><span>${esc(p.detail)}${p.fix ? ` — ${esc(p.fix)}` : ''}</span>${topList(p.top)}</div>`;
 }
 
 function itemCard(r) {
@@ -276,7 +294,9 @@ function profitView() {
     <div class="kpi"><div class="k-label">Facturación</div><div class="k-value num">${fmtMoney(k.revenue)}</div><div class="k-sub">${k.units} unidades</div></div>
     <div class="kpi ${k.net == null ? '' : k.net < 0 ? 'is-bad' : 'is-ok'}"><div class="k-label">Ganancia neta</div><div class="k-value num">${k.net == null ? 'cargá costos' : fmtMoney(k.net)}</div><div class="k-sub">sobre ${fmtPct(k.revenueCoverage)} de la facturación con costo</div></div>
     <div class="kpi ${k.margin != null && k.margin < THRESHOLDS.MARGIN_HEALTHY_MIN ? 'is-bad' : ''}"><div class="k-label">Margen promedio</div><div class="k-value num">${fmtPct(k.margin)}</div><div class="k-sub">después de todo</div></div>
-    <div class="kpi ${k.losing ? 'is-bad' : 'is-ok'}"><div class="k-label">Pierden plata</div><div class="k-value num">${k.losing}</div><div class="k-sub">productos con margen negativo</div></div>
+    ${S.model.hasAnyCost === false
+      ? `<div class="kpi"><div class="k-label">Pierden plata</div><div class="k-value" style="font-size:1rem">Cargá tus costos para calcularlo</div><div class="k-sub">sin costos no sabemos si perdés</div></div>`
+      : `<div class="kpi ${k.losing ? 'is-bad' : 'is-ok'}"><div class="k-label">Pierden plata</div><div class="k-value num">${k.losing}</div><div class="k-sub">productos con margen negativo</div></div>`}
   </div>
   <div class="grid" style="margin-top:14px">
     ${k.belowReplacement ? `<div class="notice notice-bad" role="alert">${I.alert}<div><b>Estás vendiendo por debajo de lo que te cuesta reponer</b> en ${k.belowReplacement} producto(s). Con el precio actual, cada venta te descapitaliza. Mirá la columna "Margen repos.".</div></div>` : ''}
@@ -667,6 +687,7 @@ async function boot() {
       S.demoData.lines = [];
       S.demoData.items.forEach((it) => { it.sales30 = 0; it.sales90 = 0; });
     }
+    if (new URLSearchParams(location.search).has('sincostos')) S.demoData.costs = {};
     S.model = buildModel(S.demoData);
     S.summary = buildRuleSummary(S.model);
     S.user = { nickname: S.demoData.seller.nickname, ...S.demoData.settings, can_regenerate: true };

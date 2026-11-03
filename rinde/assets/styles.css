@@ -240,6 +240,17 @@ details.faq p { color: var(--ink-2); max-width: 62ch; }
 .summary-card .first { background: var(--surface); color: var(--ink); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; gap: 10px; align-items: flex-start; }
 .summary-card .first svg { width: 20px; height: 20px; color: var(--accent); flex: none; margin-top: 2px; }
 .summary-card .meta { color: var(--panel-muted); font-size: .8rem; margin-top: 12px; }
+.summary-card .rev-note { display: inline-block; margin-top: 8px; padding: 4px 10px; border-radius: 6px; background: var(--mark); color: var(--mark-ink); font: 600 .92rem var(--font-body); }
+.summary-card .tip-line { display: flex; gap: 6px; align-items: flex-start; color: var(--panel-muted); font-size: .8rem; margin: 0 0 12px; }
+.summary-card .tip-line svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.summary-card .problems-extra { margin-top: 0; border-top: 0; }
+.summary-card .problem-tag { padding-left: 0; }
+.summary-card .problem-tag::before { display: none; }
+.summary-card .ptag { display: inline-block; font: 600 .68rem var(--font-num); text-transform: uppercase; letter-spacing: .08em; color: var(--panel-muted); border: 1px solid var(--panel-line); border-radius: 4px; padding: 1px 6px; margin-bottom: 4px; }
+.summary-card .top-items { margin: 8px 0 0; padding-left: 18px; font-size: .86rem; display: grid; gap: 4px; }
+.summary-card .top-items a { color: var(--panel-ink); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.summary-card .top-items .sold { color: var(--panel-muted); white-space: nowrap; font-size: .8rem; }
+.summary-card .top-items .more { list-style: none; margin-left: -18px; color: var(--panel-muted); }
 
 .cat-filter { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 12px; scrollbar-width: none; }
 .cat-filter::-webkit-scrollbar { display: none; }
@@ -253,6 +264,8 @@ details.faq p { color: var(--ink-2); max-width: 62ch; }
 .cat-tile:hover { border-color: var(--line-strong); }
 .cat-tile .n { font: 600 1.7rem/1.1 var(--font-num); letter-spacing: -0.03em; }
 .cat-tile .l { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: .86rem; }
+.cat-tile .n.n-text { font: 600 .92rem/1.25 var(--font-body); letter-spacing: 0; }
+a.cat-tile { text-decoration: none; }
 .cat-tile svg { width: 16px; height: 16px; }
 .cat-tile.bad { border-left-color: var(--bad); } .cat-tile.bad .l { color: var(--bad); }
 .cat-tile.warn { border-left-color: var(--warn); } .cat-tile.warn .l { color: var(--warn); }

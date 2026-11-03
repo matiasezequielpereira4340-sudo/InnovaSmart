@@ -82,7 +82,7 @@ export async function getAccessToken(userId) {
 }
 
 /** GET a la API de MeLi con reintentos (429/5xx) y espera exponencial. */
-export async function meliGet(token, path, { retries = 3, allow404 = false, headers = {} } = {}) {
+export async function meliGet(token, path, { retries = 3, allow404 = false, headers = {}, onMiss = null } = {}) {
   let wait = 600;
   for (let attempt = 0; ; attempt++) {
     let r;
@@ -99,7 +99,10 @@ export async function meliGet(token, path, { retries = 3, allow404 = false, head
       wait *= 2;
       continue;
     }
-    if (allow404 && (r.status === 404 || r.status === 403 || r.status === 400)) return null;
+    if (allow404 && (r.status === 404 || r.status === 403 || r.status === 400)) {
+      if (onMiss) { const b = await r.json().catch(() => ({})); onMiss({ status: r.status, error: b.error || null, message: b.message || null }); }
+      return null;
+    }
     if (r.status === 401) throw new MeliError(401, 'La conexión con Mercado Libre venció. Volvé a conectar tu cuenta.', path);
     if (r.status === 429 || r.status >= 500) throw new MeliError(r.status, 'Mercado Libre no respondió, reintentá en unos minutos.', path);
     throw new MeliError(r.status, 'Mercado Libre no devolvió los datos pedidos.', path);
@@ -173,9 +176,13 @@ export async function getVisits30(t, ids) {
 }
 
 /** Calidad oficial: GET /item/{id}/performance (reemplaza al discontinuado /health). */
-export async function getPerformance(t, id) {
-  const p = await meliGet(t, `/item/${id}/performance`, { allow404: true });
+export async function getPerformance(t, id, probe = null) {
+  // probe (opcional) junta por qué MeLi no dio la calidad: código HTTP y mensaje, sin tokens.
+  const note = (k, sample) => { if (!probe) return; probe.counts[k] = (probe.counts[k] || 0) + 1; if (sample && !probe.sample) probe.sample = { item_id: id, ...sample }; };
+  const p = await meliGet(t, `/item/${id}/performance`, { allow404: true, onMiss: (m) => note(String(m.status), m) });
   if (!p) return null;
+  if (p.score == null && p.level == null) note('200_sin_puntaje', { keys: Object.keys(p).slice(0, 15) });
+  else note('ok');
   const pending = [];
   const walk = (node) => {
     if (!node || typeof node !== 'object') return;
@@ -272,6 +279,24 @@ export async function getBillingRaw(t, orderId) {
   const b = await meliRaw(t, `/billing/integration/group/ML/order/details?order_id=${orderId}`);
   if (has(b)) return { ...b, param: 'order_id' };
   return { ...(a.status === 200 ? a : b), param: null, tried: [{ param: 'order_ids', status: a.status }, { param: 'order_id', status: b.status }] };
+}
+
+/**
+ * LIQUIDACIÓN real de un cobro (lo que efectivamente le quedó al vendedor). Solo lectura.
+ * Primero la API de pagos de Mercado Pago (el token de MeLi suele servir); si no, /collections de MeLi.
+ */
+export async function getSettlementRaw(t, paymentId) {
+  const t0 = Date.now();
+  try {
+    const r = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, { headers: { Authorization: `Bearer ${t}`, Accept: 'application/json' } });
+    const body = await r.json().catch(() => null);
+    if (r.status === 200 && body) return { status: 200, body, source: 'mercadopago', ms: Date.now() - t0 };
+    const c = await meliRaw(t, `/collections/${paymentId}`);
+    if (c.status === 200 && c.body) return { ...c, source: 'collections', tried: [{ source: 'mercadopago', status: r.status }] };
+    return { status: c.status || r.status, body: null, source: null, tried: [{ source: 'mercadopago', status: r.status }, { source: 'collections', status: c.status }] };
+  } catch {
+    return { status: 0, body: null, source: null };
+  }
 }
 
 /** Cargos reales por venta según la facturación. null si todavía no hay dato legible. */

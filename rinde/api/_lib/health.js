@@ -67,7 +67,10 @@ async function checkMeli() {
   let last = null;
   try { last = (await db.one('rinde_settings', { key: 'last_auth_error' }))?.value || null; } catch {}
   const lastTxt = last ? ` Último error al conectar una cuenta: ${last.reason}${last.status ? ` (${last.status})` : ''} el ${new Date(last.at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}.` : '';
-  if (r.ok) return { ok: true, detail: 'App ID y Clave secreta correctos.' + lastTxt };
+  let perf = null;
+  try { perf = (await db.one('rinde_settings', { key: 'last_perf_probe' }))?.value || null; } catch {}
+  const perfTxt = perf ? ` Calidad de publicaciones (última sincronización): ${Object.entries(perf.counts || {}).map(([k, v]) => `${k}=${v}`).join(', ') || 'sin datos'}${perf.sample ? ` · ejemplo: ${JSON.stringify(perf.sample).slice(0, 300)}` : ''}.` : '';
+  if (r.ok) return { ok: true, detail: 'App ID y Clave secreta correctos.' + lastTxt + perfTxt };
   const b = await r.json().catch(() => ({}));
   if (b.error === 'invalid_client' || r.status === 401) return { ok: false, detail: 'App ID o Clave secreta incorrectos (Mercado Libre responde invalid_client).' + lastTxt };
   return { ok: false, detail: `Mercado Libre respondió ${r.status}${b.error ? ` (${b.error})` : ''}.` };

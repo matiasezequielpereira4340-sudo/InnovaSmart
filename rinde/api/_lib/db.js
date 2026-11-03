@@ -49,6 +49,20 @@ export const db = {
     if (limit) q += `&limit=${limit}`;
     return (await call(q)) || [];
   },
+  /** Igual que select pero trae TODO, de a 1000 (Supabase corta en 1000 filas por consulta). */
+  async selectAll(table, match = {}, { columns = '*', order, max = 50000 } = {}) {
+    const out = [];
+    for (let offset = 0; offset < max; offset += 1000) {
+      let q = `${table}?select=${columns}`;
+      const f = filters(match);
+      if (f) q += `&${f}`;
+      q += `&order=${order || 'id.asc'}&limit=1000&offset=${offset}`;
+      const rows = (await call(q)) || [];
+      out.push(...rows);
+      if (rows.length < 1000) break;
+    }
+    return out;
+  },
   async one(table, match, opts) {
     const rows = await db.select(table, match, { ...opts, limit: 1 });
     return rows[0] || null;

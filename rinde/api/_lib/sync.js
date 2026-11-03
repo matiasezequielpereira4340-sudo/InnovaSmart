@@ -3,6 +3,7 @@
 import { db } from './db.js';
 import * as meli from './meli.js';
 import { LIMITS } from '../../shared/config.js';
+import { parseSettlement } from '../../shared/validation.js';
 
 const now = () => new Date().toISOString();
 const DAY = 86400000;
@@ -63,7 +64,12 @@ export async function step(userId, sellerId) {
       const batch = job.item_ids.slice(job.cursor, job.cursor + LIMITS.ITEMS_PER_SYNC_STEP);
       const raw = await meli.getItems(token, batch);
       const visits = await meli.getVisits30(token, batch);
-      const perf = await meli.pool(raw, 4, (b) => meli.getPerformance(token, b.id));
+      const probe = { counts: {}, sample: null };
+      const perf = await meli.pool(raw, 4, (b) => meli.getPerformance(token, b.id, probe));
+      if (raw.length) {
+        perf.forEach((x) => { if (x?.__error) { probe.counts.error = (probe.counts.error || 0) + 1; if (!probe.sample) probe.sample = { error: String(x.__error).slice(0, 200) }; } });
+        try { await db.upsert('rinde_settings', [{ key: 'last_perf_probe', value: { ...probe, at: new Date().toISOString() }, updated_at: new Date().toISOString() }], 'key'); } catch {}
+      }
       const comp = await meli.pool(raw, 3, (b) => meli.getCompetition(token, b));
       const rows = raw.map((b, i) => {
         const it = meli.normalizeItem(b);
@@ -79,7 +85,7 @@ export async function step(userId, sellerId) {
       job.cursor += batch.length;
       if (job.cursor >= job.total) Object.assign(job, { phase: 'orders', meta: { ...job.meta, orders_offset: 0, orders_count: 0 } });
     } else if (job.phase === 'orders') {
-      const from = new Date(Date.now() - 90 * DAY).toISOString();
+      const from = new Date(Date.now() - 180 * DAY).toISOString(); // 180 días: para saber qué vendía cada publicación antes del problema
       let offset = job.meta.orders_offset || 0;
       let finished = false;
       for (let p = 0; p < 8; p++) {
@@ -95,6 +101,7 @@ export async function step(userId, sellerId) {
             pack_id: o.pack_id || null,
             taxes_amount: (o.payments || []).reduce((s, p) => s + (Number(p.taxes_amount) || 0), 0),
             installments: (o.payments || [])[0]?.installments || null,
+            payment_ids: (o.payments || []).filter((p) => p?.id && p.status !== 'refunded' && p.status !== 'cancelled').map((p) => p.id),
           },
         }));
         await db.upsert('rinde_orders', rows, 'user_id,order_id');
@@ -105,7 +112,7 @@ export async function step(userId, sellerId) {
       }
       job.meta.orders_offset = offset;
       if (finished) {
-        const recent = await db.select('rinde_orders', { user_id: userId }, { columns: 'order_id,date_created,fees_source', order: 'date_created.desc', limit: 2000 });
+        const recent = await db.selectAll('rinde_orders', { user_id: userId }, { columns: 'order_id,date_created,fees_source', order: 'date_created.desc' });
         const cutoff = Date.now() - 31 * DAY;
         const queue = recent.filter((o) => new Date(o.date_created).getTime() >= cutoff && o.fees_source !== 'facturación').map((o) => o.order_id);
         Object.assign(job, { phase: queue.length ? 'billing' : 'finalize', meta: { ...job.meta, billing_queue: queue, billing_done: 0 } });
@@ -127,21 +134,46 @@ export async function step(userId, sellerId) {
           taxesUnknown = !taxes;
           fees = { commission, shipping: shipping || 0, financing: 0, taxes, other: 0 };
         }
+        // Retenciones (IIBB, etc.): no vienen en la facturación de MeLi; las descuenta Mercado Pago al liquidar.
+        if (!(fees.taxes > 0) && (o.data.payment_ids || []).length) {
+          let taxes = 0, read = false;
+          for (const pid of o.data.payment_ids) {
+            const st = await meli.getSettlementRaw(token, pid);
+            const p = st.status === 200 ? parseSettlement(st.body) : null;
+            if (p) { read = true; taxes += p.fees.taxes; }
+          }
+          if (read) { fees = { ...fees, taxes }; taxesUnknown = false; }
+        }
         await db.update('rinde_orders', { user_id: userId, order_id: o.order_id }, { fees, fees_source: source, taxes_unknown: taxesUnknown });
       });
       job.meta.billing_done += batchIds.length;
       if (job.meta.billing_done >= queue.length) job.phase = 'finalize';
     } else if (job.phase === 'finalize') {
-      const orders = await db.select('rinde_orders', { user_id: userId }, { columns: 'date_created,data', limit: 10000 });
-      const c30 = {}, c90 = {};
-      const cutoff30 = Date.now() - 30 * DAY;
-      for (const o of orders) for (const l of o.data.lines || []) {
-        c90[l.item_id] = (c90[l.item_id] || 0) + l.qty;
-        if (new Date(o.date_created).getTime() >= cutoff30) c30[l.item_id] = (c30[l.item_id] || 0) + l.qty;
+      const orders = await db.selectAll('rinde_orders', { user_id: userId }, { columns: 'order_id,date_created,data', order: 'order_id.asc' });
+      // Ventas por publicación (unidades y $) en 30/90/180 días, y facturación real de la cuenta.
+      const st = {};
+      const revenue = { d30: 0, d90: 0, d180: 0, orders30: 0, orders90: 0, orders180: 0 };
+      const t30 = Date.now() - 30 * DAY, t90 = Date.now() - 90 * DAY, t180 = Date.now() - 180 * DAY;
+      for (const o of orders) {
+        const t = new Date(o.date_created).getTime();
+        if (t < t180) continue;
+        const gross = (o.data.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0);
+        revenue.d180 += gross; revenue.orders180++;
+        if (t >= t90) { revenue.d90 += gross; revenue.orders90++; }
+        if (t >= t30) { revenue.d30 += gross; revenue.orders30++; }
+        for (const l of o.data.lines || []) {
+          const a = (st[l.item_id] ||= { s30: 0, s90: 0, s180: 0, r180: 0, last: null });
+          const q = Number(l.qty) || 0;
+          a.s180 += q; a.r180 += q * (Number(l.unit_price) || 0);
+          if (t >= t90) a.s90 += q;
+          if (t >= t30) a.s30 += q;
+          if (!a.last || o.date_created > a.last) a.last = o.date_created;
+        }
       }
-      const items = await db.select('rinde_items', { user_id: userId }, { columns: 'item_id,data' });
+      job.meta.revenue = { ...revenue, at: now() };
+      const items = await db.selectAll('rinde_items', { user_id: userId }, { columns: 'item_id,data', order: 'item_id.asc' });
       const keep = new Set(job.item_ids);
-      const rows = items.filter((r) => keep.has(r.item_id)).map((r) => ({ user_id: userId, item_id: r.item_id, data: { ...r.data, sales30: c30[r.item_id] || 0, sales90: c90[r.item_id] || 0 }, fetched_at: now() }));
+      const rows = items.filter((r) => keep.has(r.item_id)).map((r) => ({ user_id: userId, item_id: r.item_id, data: { ...r.data, sales30: st[r.item_id]?.s30 || 0, sales90: st[r.item_id]?.s90 || 0, sales180: st[r.item_id]?.s180 || 0, revenue180: st[r.item_id]?.r180 || 0, last_sale_at: st[r.item_id]?.last || null }, fetched_at: now() }));
       for (const part of meli.chunk(rows, 200)) await db.upsert('rinde_items', part, 'user_id,item_id');
       // publicaciones que ya no están activas/pausadas se borran
       const gone = items.filter((r) => !keep.has(r.item_id)).map((r) => r.item_id);
@@ -165,8 +197,8 @@ export async function step(userId, sellerId) {
 export async function loadAccount(userId) {
   const [user, items, orders, costs, job, plans] = await Promise.all([
     db.one('rinde_users', { id: userId }),
-    db.select('rinde_items', { user_id: userId }, { columns: 'data' }),
-    db.select('rinde_orders', { user_id: userId }, { columns: 'order_id,date_created,data,fees,fees_source,taxes_unknown', order: 'date_created.desc', limit: 5000 }),
+    db.selectAll('rinde_items', { user_id: userId }, { columns: 'item_id,data', order: 'item_id.asc' }),
+    db.selectAll('rinde_orders', { user_id: userId }, { columns: 'order_id,date_created,data,fees,fees_source,taxes_unknown', order: 'date_created.desc' }),
     db.select('rinde_costs', { user_id: userId }),
     getJob(userId),
     db.select('rinde_ai_plans', { user_id: userId }, { columns: 'item_id,plan,input_hash' }),
@@ -201,6 +233,7 @@ export async function loadAccount(userId) {
       costs: costMap,
       settings: { ads_manual_monthly: s.ads_manual_monthly || 0, meta_ads_monthly: s.meta_ads_monthly || 0 },
       productAds: job?.meta?.productAds || null,
+      revenue: job?.meta?.revenue || null,
       seller: job?.meta?.seller || { reputation: s.reputation || null },
       prevReputation: s.prev_reputation || null,
       plans: Object.fromEntries(plans.map((p) => [p.item_id, p.plan])),
