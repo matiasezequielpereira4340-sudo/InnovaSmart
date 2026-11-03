@@ -44,7 +44,9 @@ export default handler(async (req, res) => {
   const nowIso = q.now && process.env.NODE_ENV === 'development' ? new Date(q.now).toISOString() : new Date().toISOString();
   let billing = [];
   try { billing = await billingPass(nowIso); } catch (e) { console.error('[rinde][cron] cobros', e.message); billing = [{ error: e.message }]; }
-  const users = (await db.select('rinde_users', { plan: 'rinde' }, { order: 'last_cron_at.asc.nullsfirst', limit: 200 }));
+  const connected = new Set((await db.select('rinde_connections', {}, { columns: 'user_id' })).map((c) => c.user_id));
+  // Solo cuentas con Mercado Libre conectado (quien desconectó conserva sus datos, pero no se sincroniza).
+  const users = (await db.select('rinde_users', { plan: 'rinde' }, { order: 'last_cron_at.asc.nullsfirst', limit: 200 })).filter((u) => connected.has(u.id));
   const report = [];
   for (const u of users) {
     if (Date.now() - t0 > BUDGET_MS) { report.push({ user: u.nickname, skipped: 'sin tiempo, sigue mañana' }); continue; }
@@ -63,7 +65,7 @@ export default handler(async (req, res) => {
       const nowKeys = new Set(model.alerts.map((a) => a.key));
       const nuevas = model.alerts.filter((a) => !openKeys.has(a.key));
       const resueltas = open.filter((a) => !nowKeys.has(a.key)).map((a) => a.id);
-      if (resueltas.length) await db.update('rinde_alerts', { id: resueltas }, { resolved_at: new Date().toISOString() });
+      if (resueltas.length) await db.update('rinde_alerts', { user_id: u.id, id: resueltas }, { resolved_at: new Date().toISOString() });
       if (nuevas.length) {
         await db.insert('rinde_alerts', nuevas.map((a) => ({ user_id: u.id, key: a.key, kind: a.kind, item_id: a.item_id, title: a.title, message: a.message, severity: a.severity })));
       }

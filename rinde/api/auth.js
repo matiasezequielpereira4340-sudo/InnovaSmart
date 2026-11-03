@@ -1,5 +1,5 @@
 // /api/auth/login · /api/auth/callback · /api/auth/logout · /api/auth/disconnect
-import { handler, redirect, json, query, requireEnv, appendCookie, cookie, parseCookies, method, AppError } from './_lib/http.js';
+import { handler, redirect, json, query, requireEnv, appendCookie, cookie, parseCookies, method, AppError, readBody } from './_lib/http.js';
 import { sign, unsign, randomToken, pkceChallenge } from './_lib/crypto.js';
 import { setSession, clearSession, requireSession } from './_lib/session.js';
 import { AUTH_URL, exchangeCode, getMe, saveTokens } from './_lib/meli.js';
@@ -68,9 +68,24 @@ export default handler(async (req, res) => {
   }
 
   if (action === 'disconnect') {
+    // Desconectar: SOLO corta el acceso a Mercado Libre (borra los tokens de ESTE usuario).
+    // Diagnóstico, validación, costos y suscripción quedan guardados para cuando vuelva a conectar.
     method(req, 'POST');
     const s = requireSession(req);
-    // Borra tokens y todos los datos del usuario (las tablas rinde_* tienen ON DELETE CASCADE).
+    if (!s?.userId) throw new AppError(401, 'Tu sesión venció. Volvé a entrar.');
+    await db.remove('rinde_connections', { user_id: s.userId });
+    clearSession(res);
+    return json(res, 200, { ok: true });
+  }
+
+  if (action === 'delete') {
+    // Borrar TODO: opción aparte y con confirmación escrita. Solo los datos de ESTE usuario.
+    // Los pagos quedan (sin usuario) porque hacen falta para facturar.
+    method(req, 'POST');
+    const s = requireSession(req);
+    if (!s?.userId) throw new AppError(401, 'Tu sesión venció. Volvé a entrar.');
+    const body = await readBody(req);
+    if (String(body?.confirm || '').trim() !== 'BORRAR') throw new AppError(400, 'Para borrar todo escribí BORRAR en mayúsculas.', 'confirm_required');
     await db.remove('rinde_connections', { user_id: s.userId });
     await db.remove('rinde_users', { id: s.userId });
     clearSession(res);

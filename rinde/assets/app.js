@@ -110,7 +110,8 @@ function header() {
         ${!S.paid ? `<a class="btn btn-primary btn-sm btn-block" href="/suscribirme">Suscribirme al Plan Rinde</a>` : ''}
         ${DEMO ? '<a class="btn btn-ghost btn-sm btn-block" href="/">Volver al inicio</a>' : `
         <a class="btn btn-ghost btn-sm btn-block" href="/api/auth/logout">${I.logout} Salir</a>
-        <button class="btn btn-ghost btn-sm btn-block" style="color:var(--bad)" id="disconnect">${I.trash} Desconectar mi cuenta</button>`}
+        <button class="btn btn-ghost btn-sm btn-block" id="disconnect">${I.logout} Desconectar Mercado Libre</button>
+        <button class="btn btn-ghost btn-sm btn-block" style="color:var(--bad)" id="delete-data">${I.trash} Borrar todos mis datos</button>`}
       </div>
     </details>
   </div></header>
@@ -522,8 +523,14 @@ function bind(route) {
     document.querySelector('.cat-filter')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }));
   document.getElementById('disconnect')?.addEventListener('click', async () => {
-    if (!confirm('¿Desconectar tu cuenta? Borramos tus accesos y todos tus datos de Rinde. Esta acción no se puede deshacer.')) return;
+    if (!confirm('¿Desconectar Mercado Libre? Rinde deja de leer tu cuenta. Tu diagnóstico, tus costos y tu suscripción quedan guardados para cuando vuelvas a conectar.')) return;
     try { await api('/api/auth/disconnect', { method: 'POST' }); location.href = '/?desconectado=1'; } catch (e) { toast(e.message); }
+  });
+  document.getElementById('delete-data')?.addEventListener('click', async () => {
+    const t = prompt('Esto borra para siempre tu diagnóstico, costos, alertas y conexión. No se puede deshacer.\n\nPara confirmar escribí BORRAR:');
+    if (t == null) return;
+    if (t.trim() !== 'BORRAR') { toast('No borramos nada: tenías que escribir BORRAR.'); return; }
+    try { await api('/api/auth/delete', { method: 'POST', body: { confirm: 'BORRAR' } }); location.href = '/?borrado=1'; } catch (e) { toast(e.message); }
   });
   document.getElementById('regen')?.addEventListener('click', () => {
     if (DEMO) { toast('En el demo los datos son fijos. Con tu cuenta, esto vuelve a leer todo desde Mercado Libre.'); return; }
