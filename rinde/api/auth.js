@@ -4,6 +4,8 @@ import { sign, unsign, randomToken, pkceChallenge } from './_lib/crypto.js';
 import { setSession, clearSession, requireSession } from './_lib/session.js';
 import { AUTH_URL, exchangeCode, getMe, saveTokens } from './_lib/meli.js';
 import { db } from './_lib/db.js';
+import { audit } from './_lib/audit.js';
+import { getSession } from './_lib/session.js';
 
 export default handler(async (req, res) => {
   const { action, code, state, error, next } = query(req);
@@ -34,6 +36,7 @@ export default handler(async (req, res) => {
     if (error) {
       // El usuario tocó "Cancelar" en Mercado Libre (access_denied) u otro rechazo en la pantalla de permisos.
       console.warn('[rinde][auth] autorización no otorgada:', String(error).slice(0, 40));
+      await audit(req, { event: 'login_error', userId: getSession(req)?.userId || null, reason: String(error).slice(0, 40) });
       return redirect(res, error === 'access_denied' ? '/?error=cancelado' : '/?error=rechazado');
     }
     const raw = unsign(parseCookies(req).rinde_oauth);
@@ -45,15 +48,17 @@ export default handler(async (req, res) => {
       const me = await getMe(tokens.access_token);
       if (me.site_id && me.site_id !== 'MLA') return redirect(res, '/?error=sitio');
       const nowIso = new Date().toISOString();
-      const [user] = await db.upsert('rinde_users', [{ meli_user_id: me.id, nickname: me.nickname, email: me.email || null, last_login_at: nowIso }], 'meli_user_id');
+      const [user] = await db.upsert('rinde_users', [{ meli_user_id: me.id, nickname: me.nickname, email: me.email || null, last_login_at: nowIso, needs_reconnect_at: null, needs_reconnect_reason: null }], 'meli_user_id');
       if (!user.alert_email && me.email) await db.update('rinde_users', { id: user.id }, { alert_email: me.email });
       await saveTokens(user.id, tokens);
       setSession(res, user.id);
+      await audit(req, { event: 'login', user });
       return redirect(res, safeNext(nextPath) || '/app#/conectando');
     } catch (e) {
       const reason = e.reason || (e.code === 'db' ? 'base_de_datos' : e.name === 'MeliError' ? `meli_${e.meliStatus || e.status}` : 'interno');
       console.error('[rinde][auth] fallo la conexión:', reason, e.meliStatus || '', e.meliMessage || e.message);
       // Queda registrado para verlo en Admin > Conexiones (sin claves ni códigos).
+      await audit(req, { event: 'login_error', userId: getSession(req)?.userId || null, reason, detail: { status: e.meliStatus || e.status || null, message: e.meliMessage || null } });
       try { await db.upsert('rinde_settings', [{ key: 'last_auth_error', value: { reason, status: e.meliStatus || e.status || null, message: e.meliMessage || null, at: new Date().toISOString() }, updated_at: new Date().toISOString() }], 'key'); } catch {}
       const ours = ['invalid_client', 'unauthorized_client', 'invalid_scope', 'unauthorized_application', 'base_de_datos', 'interno'].includes(reason) || /^http_4/.test(reason);
       if (reason === 'invalid_grant') return redirect(res, '/?error=estado');
@@ -63,6 +68,8 @@ export default handler(async (req, res) => {
   }
 
   if (action === 'logout') {
+    const s = getSession(req);
+    if (s?.userId) await audit(req, { event: 'logout', userId: s.userId });
     clearSession(res);
     return redirect(res, '/');
   }
@@ -73,6 +80,8 @@ export default handler(async (req, res) => {
     method(req, 'POST');
     const s = requireSession(req);
     if (!s?.userId) throw new AppError(401, 'Tu sesión venció. Volvé a entrar.');
+    const body = await readBody(req).catch(() => ({}));
+    await audit(req, { event: 'disconnect', userId: s.userId, reason: body?.via === 'menu' ? 'boton_desconectar' : 'pedido_sin_boton', detail: { via: body?.via || null } });
     await db.remove('rinde_connections', { user_id: s.userId });
     clearSession(res);
     return json(res, 200, { ok: true });
@@ -85,7 +94,11 @@ export default handler(async (req, res) => {
     const s = requireSession(req);
     if (!s?.userId) throw new AppError(401, 'Tu sesión venció. Volvé a entrar.');
     const body = await readBody(req);
-    if (String(body?.confirm || '').trim() !== 'BORRAR') throw new AppError(400, 'Para borrar todo escribí BORRAR en mayúsculas.', 'confirm_required');
+    if (String(body?.confirm || '').trim() !== 'BORRAR') {
+      await audit(req, { event: 'delete_rejected', userId: s.userId, reason: 'sin_confirmacion_BORRAR' });
+      throw new AppError(400, 'Para borrar todo escribí BORRAR en mayúsculas.', 'confirm_required');
+    }
+    await audit(req, { event: 'delete', userId: s.userId, reason: 'boton_borrar_confirmado' });
     await db.remove('rinde_connections', { user_id: s.userId });
     await db.remove('rinde_users', { id: s.userId });
     clearSession(res);

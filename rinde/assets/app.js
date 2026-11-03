@@ -31,7 +31,7 @@ async function api(path, opts = {}) {
   const timer = setTimeout(() => ctl.abort(), timeout);
   let r;
   try {
-    r = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...rest, body: rest.body ? JSON.stringify(rest.body) : undefined, signal: ctl.signal });
+    r = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Rinde-Page': (location.pathname + location.hash).slice(0, 200) }, ...rest, body: rest.body ? JSON.stringify(rest.body) : undefined, signal: ctl.signal });
   } catch (e) {
     clearTimeout(timer);
     if (e.name === 'AbortError') throw Object.assign(new Error('El servidor tardó demasiado en responder.'), { status: 0, code: 'timeout' });
@@ -524,13 +524,13 @@ function bind(route) {
   }));
   document.getElementById('disconnect')?.addEventListener('click', async () => {
     if (!confirm('¿Desconectar Mercado Libre? Rinde deja de leer tu cuenta. Tu diagnóstico, tus costos y tu suscripción quedan guardados para cuando vuelvas a conectar.')) return;
-    try { await api('/api/auth/disconnect', { method: 'POST' }); location.href = '/?desconectado=1'; } catch (e) { toast(e.message); }
+    try { await api('/api/auth/disconnect', { method: 'POST', body: { via: 'menu', confirmed: true } }); location.href = '/?desconectado=1'; } catch (e) { toast(e.message); }
   });
   document.getElementById('delete-data')?.addEventListener('click', async () => {
     const t = prompt('Esto borra para siempre tu diagnóstico, costos, alertas y conexión. No se puede deshacer.\n\nPara confirmar escribí BORRAR:');
     if (t == null) return;
     if (t.trim() !== 'BORRAR') { toast('No borramos nada: tenías que escribir BORRAR.'); return; }
-    try { await api('/api/auth/delete', { method: 'POST', body: { confirm: 'BORRAR' } }); location.href = '/?borrado=1'; } catch (e) { toast(e.message); }
+    try { await api('/api/auth/delete', { method: 'POST', body: { confirm: 'BORRAR', via: 'menu' } }); location.href = '/?borrado=1'; } catch (e) { toast(e.message); }
   });
   document.getElementById('regen')?.addEventListener('click', () => {
     if (DEMO) { toast('En el demo los datos son fijos. Con tu cuenta, esto vuelve a leer todo desde Mercado Libre.'); return; }

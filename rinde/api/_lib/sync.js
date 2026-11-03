@@ -4,6 +4,7 @@ import { db } from './db.js';
 import * as meli from './meli.js';
 import { LIMITS } from '../../shared/config.js';
 import { parseSettlement } from '../../shared/validation.js';
+import { markNeedsReconnect } from './audit.js';
 
 const now = () => new Date().toISOString();
 const DAY = 86400000;
@@ -181,7 +182,11 @@ export async function step(userId, sellerId) {
       Object.assign(job, { phase: 'done', status: 'done', finished_at: now() });
     }
   } catch (e) {
-    if (e.status === 401) throw e;
+    if (e.status === 401) {
+      // Token revocado o vencido: NO se borra nada; queda marcada para reconectar.
+      if (e.name === 'MeliError') await markNeedsReconnect(userId, `api_401${e.path ? ' ' + String(e.path).split('?')[0].slice(0, 60) : ''}`);
+      throw e;
+    }
     job.error = e.message;
     job.retries = (job.retries || 0) + 1;
     if (job.retries > 5) job.status = 'error';

@@ -90,6 +90,12 @@ export default handler(async (req, res) => {
 
   if (req.method === 'GET' && q.view === 'health') return json(res, 200, await runHealth());
 
+  if (req.method === 'GET' && q.view === 'audit') {
+    const rows = await db.select('rinde_audit', {}, { order: 'created_at.desc', limit: 100 });
+    const flagged = (await db.select('rinde_users', {}, { columns: 'id,nickname,needs_reconnect_at,needs_reconnect_reason', limit: 2000 })).filter((u) => u.needs_reconnect_at);
+    return json(res, 200, { rows, needsReconnect: flagged });
+  }
+
   if (req.method === 'GET' && q.view === 'billing') return json(res, 200, { config: await getBillingConfig() });
 
   if (req.method === 'GET' && q.view === 'payments') {
@@ -138,7 +144,7 @@ export default handler(async (req, res) => {
 
   if (req.method === 'GET') {
     const [users, conns] = await Promise.all([
-      db.select('rinde_users', {}, { columns: 'id,meli_user_id,nickname,plan,created_at,plan_activated_at,free_diagnosis_used_at,last_login_at,alert_email,billing_email,plan_interval,plan_expires_at,billing_status,grace_until,payment_method', order: 'created_at.desc', limit: 1000 }),
+      db.select('rinde_users', {}, { columns: 'id,meli_user_id,nickname,plan,created_at,needs_reconnect_at,needs_reconnect_reason,plan_activated_at,free_diagnosis_used_at,last_login_at,alert_email,billing_email,plan_interval,plan_expires_at,billing_status,grace_until,payment_method', order: 'created_at.desc', limit: 1000 }),
       db.select('rinde_connections', {}, { columns: 'user_id,updated_at' }),
     ]);
     const connected = new Set(conns.map((c) => c.user_id));

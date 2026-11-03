@@ -1,6 +1,7 @@
 // Cliente de la API de Mercado Libre (solo lectura) con refresh automático de token,
 // reintentos con espera y lotes.
 import { db } from './db.js';
+import { markNeedsReconnect } from './audit.js';
 import { encrypt, decrypt } from './crypto.js';
 import { AppError } from './http.js';
 import { parseBilling } from '../../shared/billing.js';
@@ -70,13 +71,27 @@ export async function saveTokens(userId, t) {
 }
 
 /** Devuelve un access token válido; si vence en menos de 5 minutos, lo renueva. */
-export async function getAccessToken(userId) {
+// Un error de token NUNCA borra nada: marca la cuenta "hay que reconectar", lo registra y avisa con 401.
+export async function getAccessToken(userId, req = null) {
   const c = await db.one('rinde_connections', { user_id: userId });
-  if (!c) throw new AppError(401, 'Tu cuenta de Mercado Libre no está conectada. Conectala de nuevo.', 'no_connection');
+  if (!c) {
+    await markNeedsReconnect(userId, 'sin_conexion', req);
+    throw new AppError(401, 'Tu cuenta de Mercado Libre no está conectada. Conectala de nuevo.', 'no_connection');
+  }
   if (new Date(c.expires_at).getTime() - Date.now() > 5 * 60000) return decrypt(c.access_token_enc);
-  if (!c.refresh_token_enc) throw new AppError(401, 'La conexión con Mercado Libre venció. Volvé a conectar tu cuenta.', 'expired');
+  if (!c.refresh_token_enc) {
+    await markNeedsReconnect(userId, 'sin_refresh_token', req);
+    throw new AppError(401, 'La conexión con Mercado Libre venció. Volvé a conectar tu cuenta.', 'expired');
+  }
   // El refresh token de MeLi es de un solo uso: guardamos el nuevo enseguida.
-  const t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: decrypt(c.refresh_token_enc) });
+  let t;
+  try {
+    t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: decrypt(c.refresh_token_enc) });
+  } catch (e) {
+    // MeLi caído (503): no es culpa del token, no marcamos nada.
+    if (e.status === 401) await markNeedsReconnect(userId, `refresh_${e.reason || 'rechazado'}`, req, { status: e.meliStatus || null, message: e.meliMessage || null });
+    throw e;
+  }
   await saveTokens(userId, t);
   return t.access_token;
 }

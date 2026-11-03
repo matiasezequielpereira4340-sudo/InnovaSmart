@@ -26,6 +26,7 @@ let payments = null;
 let payFilter = 'pendientes';
 let payMsg = '';
 let health = null;
+let auditData = null;
 let usersError = '';
 let loggedIn = false;
 
@@ -404,6 +405,42 @@ async function runValidation() {
 // ─────────────────────────────── Conexiones ────────────────────────────────
 const okTag = (ok, yes = 'Conecta', no = 'No conecta') => (ok ? `<span class="tag tag-ok">${I.check} ${yes}</span>` : `<span class="tag tag-bad">${I.x} ${no}</span>`);
 
+const EVENT_LABEL = { disconnect: 'Desconectó MeLi', delete: 'Borró sus datos', delete_rejected: 'Intento de borrar (sin BORRAR)', token_error: 'Error de token', logout: 'Salió', login: 'Conectó', login_error: 'Error al conectar' };
+const EVENT_TONE = { disconnect: 'warn', delete: 'bad', delete_rejected: 'warn', token_error: 'bad', logout: 'neutral', login: 'ok', login_error: 'bad' };
+function shortUA(ua) {
+  if (!ua) return 'sin dato';
+  const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+  const br = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : ua.slice(0, 24);
+  return [br, os].filter(Boolean).join(' · ');
+}
+function auditCard() {
+  const a = auditData;
+  if (!a) return `<div class="card">${I.loader.replace('<svg', '<svg class="spin"')} Cargando registro…</div>`;
+  if (a.error) return `<div class="notice notice-bad">${I.alert}<div>${esc(a.error)}</div></div>`;
+  const tag = (e) => `<span class="tag tag-${EVENT_TONE[e] || 'neutral'}">${esc(EVENT_LABEL[e] || e)}</span>`;
+  return `${a.needsReconnect?.length ? `<div class="notice notice-warn" style="margin-bottom:10px">${I.alert}<div><b>Hay que reconectar:</b> ${a.needsReconnect.map((u) => `${esc(u.nickname)} (${esc(u.needs_reconnect_reason || 'token')}, ${dateTime(u.needs_reconnect_at)})`).join(' · ')}. No se borró nada: solo tienen que volver a conectar.</div></div>` : ''}
+  <div class="card" style="padding:0;overflow:hidden">
+    ${a.rows.length ? a.rows.map((r) => `<div style="padding:10px 16px;border-bottom:1px solid var(--line);display:grid;gap:4px">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center"><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${tag(r.event)}<b class="small">${esc(r.nickname || 'usuario borrado')}</b></span><span class="tiny muted num">${dateTime(r.created_at)}</span></div>
+      <div class="tiny muted" style="overflow-wrap:anywhere">Motivo: ${esc(r.reason || '—')} · IP ${esc(r.ip || 'sin dato')} · ${esc(shortUA(r.user_agent))} · desde ${esc(r.page || r.referer || 'sin dato')}</div>
+    </div>`).join('') : '<div class="empty" style="padding:16px">Todavía no hay eventos registrados.</div>'}
+  </div>`;
+}
+
+async function loadAudit() {
+  if (DEMO) {
+    const now = Date.now();
+    auditData = { needsReconnect: [{ nickname: 'TIENDA.EJEMPLO', needs_reconnect_at: new Date(now - 3600e3).toISOString(), needs_reconnect_reason: 'refresh_invalid_grant' }], rows: [
+      { event: 'token_error', nickname: 'TIENDA.EJEMPLO', reason: 'refresh_invalid_grant', created_at: new Date(now - 3600e3).toISOString(), ip: null, user_agent: null, page: 'cron diario' },
+      { event: 'disconnect', nickname: 'OTRA.TIENDA', reason: 'boton_desconectar', created_at: new Date(now - 7200e3).toISOString(), ip: '181.0.0.1', user_agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1', page: '/app#/diagnostico' },
+      { event: 'login', nickname: 'OTRA.TIENDA', reason: null, created_at: new Date(now - 9000e3).toISOString(), ip: '181.0.0.1', user_agent: 'Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36', referer: 'https://auth.mercadolibre.com.ar/' },
+    ] };
+  } else {
+    try { auditData = await call('GET', null, '?view=audit'); } catch (e) { auditData = { error: e.message }; }
+  }
+  if (tab() === 'conexiones') healthView();
+}
+
 function healthView() {
   const h = health;
   const allOk = h && h.checks.every((c) => c.ok) && h.env.every((e) => e.ok);
@@ -416,13 +453,18 @@ function healthView() {
     ${h.checks.map((c) => `<div class="card" style="display:grid;gap:8px;border-left:4px solid ${c.ok ? 'var(--ok)' : 'var(--bad)'}"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(c.name)}</b>${okTag(c.ok)}</div><div class="small muted">${esc(c.detail)}</div></div>`).join('')}
   </div>
   <h2 style="font-size:1.2rem;margin:0 0 8px">Variables de entorno</h2>
-  <div class="card" style="padding:0;overflow:hidden">${h.env.map((e) => `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap"><span class="num small">${esc(e.key)}</span><span style="display:flex;gap:8px;align-items:center"><span class="tiny muted">${esc(e.note)}</span>${okTag(e.ok, 'OK', 'Falta')}</span></div>`).join('')}</div>`}`;
+  <div class="card" style="padding:0;overflow:hidden">${h.env.map((e) => `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap"><span class="num small">${esc(e.key)}</span><span style="display:flex;gap:8px;align-items:center"><span class="tiny muted">${esc(e.note)}</span>${okTag(e.ok, 'OK', 'Falta')}</span></div>`).join('')}</div>`}
+  <h2 style="font-size:1.2rem;margin:20px 0 8px">Registro: desconexiones, borrados y errores de token</h2>
+  <p class="small muted" style="margin:0 0 8px">Últimos 100 eventos. Queda guardado aunque el usuario se borre.</p>
+  ${auditCard()}`;
   hydrateIcons(root);
   document.getElementById('hrun')?.addEventListener('click', loadHealth);
 }
 
 async function loadHealth() {
   health = null;
+  auditData = null;
+  loadAudit();
   if (tab() === 'conexiones') healthView();
   if (DEMO) {
     health = {
