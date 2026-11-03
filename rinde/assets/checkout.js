@@ -64,6 +64,7 @@ function render() {
   ${!me ? `<div class="card" style="display:grid;gap:10px">
     <h3>${I.plug} Primero conectá tu cuenta de Mercado Libre</h3>
     <p class="small muted" style="margin:0">Así sabemos a qué cuenta activarle el plan. Es solo lectura: Rinde nunca modifica nada.</p>
+    <p class="tiny muted" style="margin:0">Mercado Libre te va a mostrar su lista de permisos genérica y el aviso de "app no certificada": es el texto estándar para cualquier app. Rinde no publica, pausa, responde ni factura nada.</p>
     <a class="btn btn-primary" href="/api/auth/login?next=/suscribirme">Conectar mi cuenta de Mercado Libre</a>
   </div>` : `
   <nav class="cat-filter" aria-label="Medio de pago" style="flex-wrap:wrap">
