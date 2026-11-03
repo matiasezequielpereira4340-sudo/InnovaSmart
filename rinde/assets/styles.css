@@ -390,3 +390,6 @@ select.btn { appearance: auto; font-family: var(--font-body); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 a.chip { text-decoration: none; }
 .card > * { min-width: 0; }
+/* Aviso de permisos de MeLi: alineado con el texto de "Solo lectura" (no con el ícono) y CTA final alineado a la izquierda */
+.trust + .tiny { padding-left: 27px; }
+.final-cta .trust { justify-content: flex-start !important; }
