@@ -254,7 +254,17 @@ function costInput(it, key) {
 }
 
 const MISSING_LABEL = { cost: 'gasto', clicks: 'clics', prints: 'impresiones', total_amount: 'ventas atribuidas', direct_amount: 'ventas directas', indirect_amount: 'ventas indirectas' };
-const FEE_SRC = { meli: 'cargo exacto de MeLi para este precio', historial: 'lo que esta publicación pagó en su última venta' };
+const FEE_SRC = { meli: 'según Mercado Libre para este precio', historial: 'según lo que esta publicación pagó antes' };
+// Detalle de los cargos de MeLi: componentes, de dónde salen y el rango si las fuentes no coinciden.
+function chargesDetail(ch) {
+  const parts = [`comisión ${fmtMoney(ch.commission)}`];
+  if (ch.fixed) parts.push(`fijo ${fmtMoney(ch.fixed)}`);
+  if (ch.financing) parts.push(`cuotas ${fmtMoney(ch.financing)}${ch.financingWorst ? ' (el caso más caro)' : ''}`);
+  if (ch.shipping) parts.push(`envío ${fmtMoney(ch.shipping)}`);
+  if (ch.taxes) parts.push(`retenciones ${fmtMoney(ch.taxes)}`);
+  const range = ch.range ? `<span class="tiny"><span class="camp-range">Cargos de MeLi entre ${fmtMoney(ch.range.low)} y ${fmtMoney(ch.range.high)}</span> (${esc(FEE_SRC[ch.range.lowSource] || '')} / ${esc(FEE_SRC[ch.range.highSource] || '')}). Para el veredicto usamos el más alto.</span>` : '';
+  return `<span class="tiny">${esc(FEE_SRC[ch.source] || 'según Mercado Libre')} · ${parts.join(' · ')}</span>${range}`;
+}
 
 function promoCard(o, e, key) {
   const it = o.item;
@@ -275,7 +285,7 @@ function promoCard(o, e, key) {
       <div><span>Precio</span><b>${fmtMoney(o.price_today)} → ${fmtMoney(o.promo_price)}</b></div>
       <div><span>Te queda por venta${hasCost ? '' : ' (antes del costo)'}</span><b>${quedan(e.today)} → <span class="${(hasCost ? e.promo.profit : e.promo.beforeCost) < 0 ? 'neg' : ''}">${quedan(e.promo)}</span></b></div>
       <div><span>Para ganar lo mismo que hoy</span><b>${e.moreSales == null ? (hasCost && e.promo.profit <= 0 ? 'no alcanza: perdés por venta' : hasCost ? '—' : 'cargá el costo para saberlo') : e.moreSales === 0 ? 'no hace falta vender más' : `necesitás vender un ${pctTxt(e.moreSales)} más`}</b></div>
-      <div><span>Cargos de MeLi con la promo</span><b>${fmtMoney(e.promo.charges.total)}</b><span class="tiny">${esc(FEE_SRC[e.promo.charges.source] || 'MeLi')} · comisión ${fmtMoney(e.promo.charges.commission)}${e.promo.charges.fixed ? ` · fijo ${fmtMoney(e.promo.charges.fixed)}` : ''}${e.promo.charges.financing ? ` · cuotas ${fmtMoney(e.promo.charges.financing)}` : ''}${e.promo.charges.shipping ? ` · envío ${fmtMoney(e.promo.charges.shipping)}` : ''}${e.promo.charges.taxes ? ` · retenciones ${fmtMoney(e.promo.charges.taxes)}` : ''}</span></div>
+      <div class="camp-wide"><span>Cargos con la promo</span><b>${fmtMoney(e.promo.charges.total)}</b>${chargesDetail(e.promo.charges)}</div>
     </div>
     ${e.crossings.length ? `<ul class="camp-notes">${e.crossings.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
     ${e.note ? `<p class="small muted" style="margin:6px 0 0">${esc(e.note)}</p>` : ''}
@@ -301,9 +311,10 @@ function adsCard(a, e, key) {
     <div class="camp-grid">
       <div><span>Gasto</span><b>${fmtMoney(a.cost)}</b></div>
       <div><span>Ventas atribuidas</span><b>${fmtMoney(e.sales)}</b><span class="tiny">${split ? `directas ${fmtMoney(a.direct_amount)}${a.direct_units != null ? ` (${a.direct_units} u)` : ''} · indirectas ${fmtMoney(a.indirect_amount)}${a.indirect_units != null ? ` (${a.indirect_units} u)` : ''}` : 'Mercado Libre no separó directas e indirectas'}</span></div>
-      ${a.clicks != null || a.prints != null ? `<div><span>Clics / impresiones</span><b>${a.clicks ?? '—'} / ${a.prints ?? '—'}</b></div>` : ''}
+      ${a.clicks != null && a.prints != null ? `<div><span>Clics / impresiones</span><b>${a.clicks} / ${a.prints}</b></div>` : a.clicks != null ? `<div><span>Clics</span><b>${a.clicks}</b></div>` : ''}
       <div><span>ACOS</span><b class="${e.losing ? 'neg' : ''}">${pctTxt(e.acos)}</b></div>
       ${e.maxAcos != null ? `<div><span>ACOS máximo que aguanta${e.cost == null ? ' (antes del costo)' : ''}</span><b>${pctTxt(e.maxAcos)}</b></div>` : ''}
+      ${e.unit ? `<div class="camp-wide"><span>Cargos por venta a ${fmtMoney(e.unit.price)}</span><b>${fmtMoney(e.unit.charges.total)}</b>${chargesDetail(e.unit.charges)}</div>` : ''}
     </div>
     ${e.losing ? `<p class="small" style="margin:6px 0 0"><b>Cada venta por publicidad pierde plata:</b> el ACOS es mayor que tu margen antes de publicidad.</p>` : ''}
     ${e.note ? `<p class="small muted" style="margin:6px 0 0">${esc(e.note)}</p>` : ''}

@@ -22,24 +22,81 @@ export function feeFromHistory(h, price) {
   return { percentage: h.pct * 100, fixed: price < min ? h.fixed || 0 : 0, financing: price * (h.financingPct || 0), source: 'historial' };
 }
 
-/**
- * Cargos de Mercado Libre para UNA venta a un precio dado. SIN tablas inventadas:
- * 1) el cargo exacto de MeLi para ese precio, categoría y tipo (listing_prices), 2) el % real que esa publicación
- * pagó antes (feeFromHistory). Si no hay ninguno, devuelve null (no se calcula ni se da veredicto).
- * @param ctx { feeAt: (price) => {percentage, fixed, financing, total?, source} | null, shipCost, offersFreeShipping, taxRate }
- */
-export function chargesAt(price, ctx = {}) {
-  const f = ctx.feeAt ? ctx.feeAt(price) : null;
-  if (!f || f.percentage == null || !Number.isFinite(Number(f.percentage))) return null;
+/** Parte un cargo de MeLi en sus componentes: comisión (el %), cargo fijo por unidad y cuotas. */
+export function feeParts(f, price) {
   const fixed = Number(f.fixed || 0);
   const financing = Number(f.financing || 0);
-  // Si MeLi da el total de su cargo (sale_fee_amount), manda ese número; si no, porcentaje sobre el precio.
   const commission = f.total != null ? Math.max(0, Number(f.total) - fixed - financing) : price * (Number(f.percentage) / 100);
+  return { commission, fixed, financing, total: commission + fixed + financing };
+}
+
+const validFee = (f) => f && f.percentage != null && Number.isFinite(Number(f.percentage));
+
+/**
+ * Cargos de Mercado Libre para UNA venta a un precio dado. SIN tablas inventadas. Fuentes posibles:
+ * 1) el cargo exacto de MeLi para ese precio, categoría y tipo (listing_prices), 2) lo que esa publicación
+ * pagó antes (feeFromHistory). feeAt puede devolver una o varias: se usa SIEMPRE la más cara (peor caso)
+ * y, si difieren más de FEE_RANGE_PCT, se informa el rango. Si no hay ninguna, null (sin cálculo ni veredicto).
+ * Premium (gold_pro): las cuotas se cuentan con el caso más caro que ofrece la publicación (maxFinancingPct);
+ * si no sabemos cuánto cobran las cuotas, no se calcula.
+ * @param ctx { feeAt, listingType, maxFinancingPct, shipCost, offersFreeShipping, taxRate }
+ */
+export function chargesAt(price, ctx = {}) {
+  const raw = ctx.feeAt ? ctx.feeAt(price) : null;
+  const list = (Array.isArray(raw) ? raw : [raw]).filter(validFee);
+  if (!list.length) return null;
+  const premium = ctx.listingType === 'gold_pro';
+  const maxFin = premium ? Number(ctx.maxFinancingPct || 0) : 0;
+  const opts = list.map((f) => {
+    const p = feeParts(f, price);
+    if (maxFin > 0 && price * maxFin > p.financing + 0.5) { p.financing = price * maxFin; p.total = p.commission + p.fixed + p.financing; p.financingWorst = true; }
+    return { ...p, source: f.source || 'meli' };
+  });
+  if (premium && !opts.some((o) => o.financing > 0)) return null; // en Premium sin dato de cuotas no se calcula
+  opts.sort((a, b) => b.total - a.total);
+  const w = opts[0];
+  const lo = opts[opts.length - 1];
+  const range = opts.length > 1 && lo.total > 0 && (w.total - lo.total) / lo.total > T.FEE_RANGE_PCT
+    ? { low: lo.total, high: w.total, lowSource: lo.source, highSource: w.source } : null;
   // Envío: desde el mínimo MeLi obliga envío gratis (lo paga el vendedor). Debajo, solo si el vendedor lo ofrece.
   const freeMandatory = price >= T.FREE_SHIPPING_MIN_PRICE;
   const shipping = freeMandatory || ctx.offersFreeShipping ? (ctx.shipCost || 0) : 0;
   const taxes = price * (ctx.taxRate || 0);
-  return { commission, fixed, financing, shipping, taxes, total: commission + fixed + financing + shipping + taxes, freeMandatory, source: f.source || 'meli' };
+  return {
+    commission: w.commission, fixed: w.fixed, financing: w.financing, financingWorst: !!w.financingWorst, meliTotal: w.total,
+    shipping, taxes, total: w.total + shipping + taxes, freeMandatory, source: w.source, range,
+  };
+}
+
+/**
+ * Compara componente por componente el cargo de listing_prices (hoy) con lo que MeLi facturó en una venta.
+ * @param meli   { commission, fixed, financing } por unidad (feeParts)
+ * @param billed { commission, fixed, financing } por unidad, commission SIN el cargo fijo
+ * @returns { parts: [{name, meli, billed, same}], same, cause }  cause: una línea en criollo
+ */
+export function compareFee(meli, billed, { price, listing_type, installments } = {}) {
+  const near = (a, b) => Math.abs(a - b) <= Math.max(T.FEE_MATCH_ABS, Math.abs(b) * T.FEE_MATCH_PCT);
+  const pc = (n) => (Math.round((n / price) * 1000) / 10).toString().replace('.', ',') + ' %';
+  const parts = [
+    { name: 'comisión', meli: meli.commission, billed: billed.commission },
+    { name: 'cargo fijo', meli: meli.fixed, billed: billed.fixed },
+    { name: 'cuotas', meli: meli.financing, billed: billed.financing },
+  ].map((x) => ({ ...x, same: near(x.meli, x.billed) }));
+  const [c, f, q] = parts;
+  const why = [];
+  if (!c.same) {
+    why.push(c.billed < c.meli
+      ? `en esa venta la comisión fue ${pc(c.billed)} y hoy MeLi informa ${pc(c.meli)}: esa venta tuvo un descuento (bonificación o campaña) o la comisión subió después`
+      : `en esa venta la comisión fue ${pc(c.billed)} y hoy MeLi informa ${pc(c.meli)}: la comisión bajó desde esa venta`);
+  }
+  if (!f.same) why.push(`el cargo fijo por unidad era ${fmt(f.billed)} en esa venta y hoy es ${fmt(f.meli)}`);
+  if (!q.same) {
+    if (listing_type === 'gold_pro') why.push(`cuotas: MeLi informa el caso más caro (${pc(q.meli)}); en esa venta el comprador pagó en ${installments || '?'} cuota${installments === 1 ? '' : 's'} y costó ${pc(q.billed)}`);
+    else if (q.billed > q.meli) why.push(`esa venta pagó ${fmt(q.billed)} de cuotas sin interés (${pc(q.billed)}) que listing_prices no incluye: la publicación ofrecía cuotas`);
+    else why.push(`cuotas: MeLi informa ${fmt(q.meli)} y esa venta pagó ${fmt(q.billed)}`);
+  }
+  const same = parts.every((x) => x.same);
+  return { parts, same, cause: same ? 'coincide en comisión, cargo fijo y cuotas' : why.join('; ') };
 }
 
 /**
@@ -123,7 +180,7 @@ export function evaluateAds(ads, ctx = {}) {
     else { verdict = 'ok'; label = 'Está bien'; }
   }
   return {
-    ads, sales, acos, marginBeforeAds, maxAcos: marginBeforeAds == null ? null : marginBeforeAds > 0 ? marginBeforeAds : 0,
+    ads, sales, acos, marginBeforeAds, unit, maxAcos: marginBeforeAds == null ? null : marginBeforeAds > 0 ? marginBeforeAds : 0,
     losing: acos != null && marginBeforeAds != null && cost != null && acos > marginBeforeAds,
     verdict, label, cost,
     noFees: !unit,
@@ -147,8 +204,10 @@ export const feeKey = (lt, cat, price) => `${lt}|${cat || ''}|${Math.round(price
 
 /** Arma las evaluaciones (para el resumen del diagnóstico y el plan de acción de cada publicación). */
 export function evaluateAll(data) {
-  const ctxOf = (it) => ({ listingType: it.listing_type, offersFreeShipping: it.offersFreeShipping, shipCost: it.shipCost, taxRate: data.taxRate, cost: it.cost,
-    outOfSeason: it.outOfSeason, seasonName: it.seasonName, feeAt: (p) => data.fees?.[feeKey(it.listing_type, it.category_id, p)] || feeFromHistory(it.feeHistory, p) });
+  const ctxOf = (it) => ({ listingType: it.listing_type, maxFinancingPct: it.maxFinancingPct, offersFreeShipping: it.offersFreeShipping, shipCost: it.shipCost, taxRate: data.taxRate, cost: it.cost,
+    outOfSeason: it.outOfSeason, seasonName: it.seasonName,
+    // Peor caso entre listing_prices y lo que esta publicación pagó antes.
+    feeAt: (p) => [data.fees?.[feeKey(it.listing_type, it.category_id, p)], feeFromHistory(it.feeHistory, p)].filter(Boolean) });
   const promos = data.offers.filter((o) => o.item && o.price_today && o.promo_price).map((o) => ({ o, e: evaluatePromo(o, ctxOf(o.item)) }));
   const ads = data.ads.filter((a) => a.item?.price && !a.noMetrics).map((a) => ({ a, e: evaluateAds(a, { ...ctxOf(a.item), price: a.item.price }) }));
   return { promos, ads, summary: summarize(promos.map((x) => x.e), ads.map((x) => x.e)) };

@@ -4,7 +4,7 @@
 import { handler, json, query, AppError } from './_lib/http.js';
 import { currentUser, isPaid } from './_lib/users.js';
 import { db } from './_lib/db.js';
-import { getAccessToken } from './_lib/meli.js';
+import { getAccessToken, meliRaw } from './_lib/meli.js';
 import { loadAccount } from './_lib/sync.js';
 import { readCampaigns, readFees } from './_lib/campaigns-meli.js';
 import { costKey } from '../shared/model.js';
@@ -37,13 +37,32 @@ export default handler(async (req, res) => {
   const allShip = Object.values(shipBy).reduce((a, x) => ({ s: a.s + x.s, q: a.q + x.q }), { s: 0, q: 0 });
   const avgShip = allShip.q ? allShip.s / allShip.q : null;
 
-  // Cargo real que pagó cada publicación en su última venta facturada (respaldo si listing_prices falla).
+  // Lo que pagó cada publicación en su última venta facturada (se compara con listing_prices y se usa el peor).
+  // Cuotas: el % más caro que se vio en sus ventas; en Premium, además, el más caro de toda la cuenta en Premium
+  // (las cuotas dependen de las que elige el comprador, así que contamos el caso más caro).
   const feeHist = {};
+  const finMax = {};
+  let premiumFinMax = 0;
   for (const l of [...lines].sort((x, y) => String(y.date).localeCompare(String(x.date)))) {
-    if (feeHist[l.item_id] || l.source !== 'facturación' || !l.qty || !l.unit_price) continue;
+    if (l.source !== 'facturación' || !l.qty || !l.unit_price) continue;
     const gross = l.qty * l.unit_price;
+    const fin = (l.fees?.financing || 0) / gross;
+    finMax[l.item_id] = Math.max(finMax[l.item_id] || 0, fin);
+    if (items[l.item_id]?.listing_type === 'gold_pro') premiumFinMax = Math.max(premiumFinMax, fin);
+    if (feeHist[l.item_id]) continue;
     const fixed = l.fees?.fixed_fee || 0;
-    feeHist[l.item_id] = { price: l.unit_price, pct: ((l.fees?.commission || 0) - fixed) / gross, fixed: fixed / l.qty, financingPct: (l.fees?.financing || 0) / gross };
+    feeHist[l.item_id] = { price: l.unit_price, pct: ((l.fees?.commission || 0) - fixed) / gross, fixed: fixed / l.qty, financingPct: fin };
+  }
+  for (const id of Object.keys(feeHist)) feeHist[id].financingPct = finMax[id];
+
+  // Avisos de publicidad de publicaciones que no están en lo leído (pausadas o cerradas): leemos tipo y
+  // categoría de MeLi (son del propio vendedor, solo lectura) para poder pedir sus cargos.
+  const missing = [...new Set(raw.ads.map((a) => a.item_id).filter((id) => id && !items[id]))];
+  const extra = {};
+  for (let i = 0; i < missing.length; i += 20) {
+    const r = await meliRaw(token, `/items?ids=${missing.slice(i, i + 20).join(',')}&attributes=id,title,price,listing_type_id,category_id,permalink,seller_custom_field,status`);
+    if (r.status !== 200 || !Array.isArray(r.body)) continue;
+    for (const x of r.body) if (x?.code === 200 && x.body?.id) extra[x.body.id] = x.body;
   }
 
   const ctxItem = (id, priceHint) => {
@@ -57,18 +76,31 @@ export default handler(async (req, res) => {
       cost: c?.purchase != null && c.purchase !== '' ? Number(c.purchase) : null,
       outOfSeason: !!season, seasonName: season?.season || null,
       feeHistory: feeHist[id] || null,
+      maxFinancingPct: it.listing_type === 'gold_pro' ? Math.max(finMax[id] || 0, premiumFinMax) : 0,
     };
   };
   const offers = raw.offers.map((o) => {
     const item = ctxItem(o.item_id);
     return { ...o, price_today: o.price_today || item?.price || null, item };
   }).filter((o) => o.item);
-  // Si la publicación del aviso no está en lo leído (por ejemplo, pausada), usamos título y precio que da Product Ads.
-  const ads = raw.ads.map((a) => ({ ...a, item: ctxItem(a.item_id) || (a.title ? { title: a.title, price: a.price, permalink: a.permalink, sku: a.item_id, listing_type: null, category_id: null, cost: null, feeHistory: null } : null) })).filter((a) => a.item);
+  // Si la publicación del aviso no está en lo leído (por ejemplo, pausada), usamos lo que dé MeLi de esa publicación
+  // o, si no, título y precio de Product Ads. El costo cargado se busca por el mismo código (SKU o número).
+  const fallback = (a) => {
+    const x = extra[a.item_id] || {};
+    const title = x.title || a.title;
+    if (!title) return null;
+    const sku = (x.seller_custom_field && String(x.seller_custom_field).trim()) || a.item_id;
+    const c = data.costs[sku] || data.costs[a.item_id];
+    const lt = x.listing_type_id || a.listing_type_id || null;
+    return { title, price: Number(x.price || 0) || a.price, permalink: x.permalink || a.permalink, sku, listing_type: lt, category_id: x.category_id || a.category_id || null,
+      cost: c?.purchase != null && c.purchase !== '' ? Number(c.purchase) : null, feeHistory: null, offersFreeShipping: false, shipCost: avgShip ?? 0, shipEstimated: true,
+      maxFinancingPct: lt === 'gold_pro' ? premiumFinMax : 0 };
+  };
+  const ads = raw.ads.map((a) => ({ ...a, item: ctxItem(a.item_id) || fallback(a) })).filter((a) => a.item);
 
   // Cargos reales de MeLi a cada precio (hoy y con promo).
   const combos = new Map();
-  const addCombo = (it, p) => { if (p) { const k = keyFee(it.listing_type, it.category_id, p); combos.set(k, { key: k, price: p, listing_type: it.listing_type, category_id: it.category_id }); } };
+  const addCombo = (it, p) => { if (p && it.listing_type) { const k = keyFee(it.listing_type, it.category_id, p); combos.set(k, { key: k, price: p, listing_type: it.listing_type, category_id: it.category_id }); } };
   for (const o of offers) { addCombo(o.item, o.price_today); addCombo(o.item, o.promo_price); }
   for (const a of ads) if (!a.noMetrics) addCombo(a.item, a.item.price);
   const fees = await readFees(token, [...combos.values()]);

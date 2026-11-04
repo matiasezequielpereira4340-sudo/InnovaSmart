@@ -1,5 +1,5 @@
 // Pruebas de los cálculos de Campañas y publicidad. Uso: node scripts/test-campanas.mjs
-import { chargesAt, evaluatePromo, evaluateAds, meliContribution, summarize, feeFromHistory, feeKey } from '../shared/campaigns.js';
+import { chargesAt, evaluatePromo, evaluateAds, meliContribution, summarize, feeFromHistory, feeKey, compareFee, feeParts } from '../shared/campaigns.js';
 import { getCampaignsDemo } from '../shared/campaigns-demo.js';
 
 let fails = 0;
@@ -84,6 +84,43 @@ ok(normMetrics({ item_id: 'x' }) === null && normMetrics({ cost: 100, clicks: 3 
 
 const s = summarize([e1, e2, e3, e4, e5], [a1, a2, a3, a4]);
 ok(s.conv === 2 && s.loseP === 1 && s.loseA === 2, `Resumen: "${s.text}"`);
+
+// ── Comparación por componente con las 6 ventas reales (listing_prices de MATYPERE contra facturación guardada) ──
+const cmpCases = [
+  { price: 57000, lt: 'gold_special', inst: 1, meli: { total: 7980, percentage: 14, fixed: 0, financing: 0 }, billed: { commission: 6121.7, fixed: 0, financing: 0 }, expect: /comisión fue 10,7 %.*14 %.*descuento/ },
+  { price: 22000, lt: 'gold_special', inst: 6, meli: { total: 5930, percentage: 14.5, fixed: 2740, financing: 0 }, billed: { commission: 3190, fixed: 2800, financing: 0 }, expect: /cargo fijo.*\$2\.800.*\$2\.740/ },
+  { price: 47990, lt: 'gold_special', inst: 1, meli: { total: 7438.45, percentage: 15.5, fixed: 0, financing: 0 }, billed: { commission: 7438.45, fixed: 0, financing: 0 }, expect: /^coincide/ },
+  { price: 56990.5, lt: 'gold_pro', inst: 3, meli: { total: 16185.44, percentage: 15.5, fixed: 0, financing: 7351.91 }, billed: { commission: 8833.53, fixed: 0, financing: 5072.15 }, expect: /caso más caro \(12,9 %\).*3 cuotas.*8,9 %/ },
+  { price: 29999, lt: 'gold_special', inst: 1, meli: { total: 7369.86, percentage: 13.5, fixed: 3320, financing: 0 }, billed: { commission: 4049.86, fixed: 3400, financing: 1499.95 }, expect: /cargo fijo.*\$3\.400.*\$3\.320.*cuotas sin interés/ },
+  { price: 60000, lt: 'gold_special', inst: 1, meli: { total: 8400, percentage: 14, fixed: 0, financing: 0 }, billed: { commission: 8400, fixed: 0, financing: 0 }, expect: /^coincide/ },
+];
+for (const c of cmpCases) {
+  const r = compareFee(feeParts(c.meli, c.price), c.billed, { price: c.price, listing_type: c.lt, installments: c.inst });
+  ok(c.expect.test(r.cause), `Por componente ${money(c.price)} ${c.lt}: ${r.cause}`);
+}
+const p30 = cmpCases[4];
+const m30 = feeParts(p30.meli, p30.price);
+ok(Math.abs(m30.commission - p30.billed.commission) < 1, '$29.999: la comisión (13,5 %) coincide; la diferencia es cargo fijo y cuotas, no comisión');
+
+// ── Peor caso entre listing_prices y lo que pagó la publicación ──
+const lpFee = { percentage: 14, fixed: 0, financing: 0, total: 7980, source: 'meli' };
+const hist57 = { price: 57000, pct: 6121.7 / 57000, fixed: 0, financingPct: 0 };
+const w57 = chargesAt(57000, { feeAt: (p) => [lpFee, feeFromHistory(hist57, p)].filter(Boolean) });
+ok(Math.round(w57.meliTotal) === 7980 && w57.source === 'meli' && w57.range && Math.round(w57.range.low) === 6122, `$57.000: usa el más caro (${money(w57.meliTotal)}) y muestra "cargos entre ${money(w57.range.low)} y ${money(w57.range.high)}"`);
+const hist30 = { price: 29999, pct: 4049.86 / 29999, fixed: 3400, financingPct: 1499.95 / 29999 };
+const w30 = chargesAt(29999, { feeAt: (p) => [{ percentage: 13.5, fixed: 3320, financing: 0, total: 7369.86, source: 'meli' }, feeFromHistory(hist30, p)] });
+ok(w30.source === 'historial' && Math.round(w30.meliTotal) === 8950 && w30.range, `$29.999: el peor caso es lo que pagó antes con cuotas (${money(w30.meliTotal)}), rango ${money(w30.range.low)} a ${money(w30.range.high)}`);
+const w22 = chargesAt(22000, { feeAt: () => [{ percentage: 14.5, fixed: 2740, financing: 0, total: 5930, source: 'meli' }, { percentage: 14.5, fixed: 2800, financing: 0, source: 'historial' }] });
+ok(w22.range === null && Math.round(w22.meliTotal) === 5990, '$22.000: difieren menos de 5 % → sin rango, igual usa el más alto');
+
+// ── Premium: cuotas con el caso más caro ──
+const prem = chargesAt(56990.5, { listingType: 'gold_pro', maxFinancingPct: 5072.15 / 56990.5, feeAt: () => [{ percentage: 15.5, fixed: 0, financing: 0, source: 'historial' }] });
+ok(prem && Math.round(prem.financing) === 5072 && prem.financingWorst, 'Premium con historial de 1 cuota: cuenta las cuotas con el caso más caro visto (8,9 %)');
+const prem2 = chargesAt(56990.5, { listingType: 'gold_pro', maxFinancingPct: 0.089, feeAt: () => [{ percentage: 15.5, fixed: 0, financing: 7351.91, total: 16185.44, source: 'meli' }] });
+ok(Math.round(prem2.financing) === 7352 && !prem2.financingWorst, 'Premium: si MeLi informa cuotas más caras (12,9 %), manda esa');
+ok(chargesAt(56990.5, { listingType: 'gold_pro', feeAt: () => [{ percentage: 15.5, fixed: 0, financing: 0, source: 'historial' }] }) === null, 'Premium sin dato de cuotas: no se calcula (no se inventa)');
+const adsPrem = evaluateAds({ cost: 3000, total_amount: 56990 }, { price: 56990.5, cost: null, listingType: 'gold_pro', feeAt: () => [{ percentage: 15.5, fixed: 0, financing: 0, source: 'historial' }] });
+ok(adsPrem.verdict === null && adsPrem.noFees, 'Publicidad Premium sin dato de cuotas: sin veredicto');
 
 console.log(fails ? `\n${fails} FALLA(S)` : '\nTodo OK');
 process.exit(fails ? 1 : 0);

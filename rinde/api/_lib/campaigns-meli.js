@@ -2,6 +2,7 @@
 // Rinde nunca activa, cambia ni da de baja nada: solo GET.
 // Límites: pedidos de a lotes chicos, concurrencia baja y reintento con espera ante 429 (meliRaw lo hace).
 import { meliRaw, pool } from './meli.js';
+import { feeParts, compareFee } from '../../shared/campaigns.js';
 
 const PROMO_V = 'app_version=v2';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -57,17 +58,29 @@ export async function probeCampaignsAccess(t, sellerId, sampleItem) {
   return { rows, at: new Date().toISOString() };
 }
 
-/** Verifica listing_prices contra cargos reales ya facturados (precio, categoría y tipo de ventas guardadas). */
+/**
+ * Verifica listing_prices contra cargos reales ya facturados, COMPONENTE POR COMPONENTE
+ * (comisión, cargo fijo y cuotas), así se compara lo mismo con lo mismo.
+ * @param samples [{ key, price, listing_type, category_id, installments, billed: {commission, fixed, financing} }]
+ */
 export async function checkFeesAgainstBilling(t, samples) {
   const fees = await readFees(t, samples.map((x) => ({ key: x.key, price: x.price, listing_type: x.listing_type, category_id: x.category_id })));
   return samples.map((x) => {
     const f = fees[x.key];
-    const meli = f ? (f.total != null ? f.total : x.price * (f.percentage / 100) + f.fixed + f.financing) : null;
-    return { price: x.price, listing_type: x.listing_type, category_id: x.category_id, real: x.real, meli, diffPct: meli != null && x.real ? (meli - x.real) / x.real : null };
+    const real = x.billed.commission + x.billed.fixed + x.billed.financing;
+    if (!f) return { price: x.price, listing_type: x.listing_type, category_id: x.category_id, real, meli: null, diffPct: null, cause: 'MeLi no devolvió el cargo para este precio' };
+    const m = feeParts(f, x.price);
+    const cmp = compareFee(m, x.billed, x);
+    const noFin = (m.commission + m.fixed) - (x.billed.commission + x.billed.fixed);
+    return {
+      price: x.price, listing_type: x.listing_type, category_id: x.category_id, installments: x.installments ?? null,
+      real, meli: m.total, diffPct: real ? (m.total - real) / real : null,
+      // Sin cuotas (comisión + cargo fijo), que es lo que se puede comparar siempre.
+      diffNoFinancingPct: x.billed.commission + x.billed.fixed ? noFin / (x.billed.commission + x.billed.fixed) : null,
+      parts: cmp.parts, same: cmp.same, cause: cmp.cause,
+    };
   });
 }
-
-
 
 // ── Métricas de Product Ads ──
 // Pedimos las métricas con fechas y lista explícita (api-version 2). Según un reporte de desarrolladores, MeLi
@@ -220,6 +233,7 @@ export async function readCampaigns(t, sellerId, { maxPromos = 20, maxItemsPerPr
       ads.push({
         item_id: id, campaign_id: x.campaign_id || null, campaign: campName[String(x.campaign_id)] || (x.campaign_id ? `Campaña ${x.campaign_id}` : 'Sin campaña'),
         status: x.status || null, title: x.title || null, price: Number(x.price || 0) || null, permalink: x.permalink || null,
+        listing_type_id: x.listing_type_id || null, category_id: x.category_id || null,
         noMetrics: !m, metricsMissing: m ? m.missing : ['cost', 'clicks', 'prints', 'total_amount', 'direct_amount', 'indirect_amount'],
         cost: m?.cost ?? null, clicks: m?.clicks ?? null, prints: m?.prints ?? null,
         direct_amount: m?.direct_amount ?? null, indirect_amount: m?.indirect_amount ?? null, total_amount: m?.total_amount ?? null,
@@ -240,10 +254,17 @@ export async function readFees(t, combos) {
     const b = Array.isArray(r.body) ? r.body.find((x) => x.listing_type_id === c.listing_type) || r.body[0] : r.body;
     const d = b?.sale_fee_details || {};
     if (!b || (b.sale_fee_amount == null && d.percentage_fee == null)) return;
-    const pctFee = Number(d.percentage_fee ?? d.meli_percentage_fee);
+    // La comisión sola es meli_percentage_fee; percentage_fee a veces ya trae sumadas las cuotas.
+    const pctFee = Number(d.meli_percentage_fee ?? d.percentage_fee);
+    const pctAll = Number(d.percentage_fee);
     const fixed = Number(d.fixed_fee || 0);
-    const financing = d.financing_add_on_fee != null ? (Number(d.financing_add_on_fee) * c.price) / 100 : 0;
     const total = b.sale_fee_amount != null ? Number(b.sale_fee_amount) : null;
+    let financing;
+    if (d.financing_add_on_fee != null) financing = (Number(d.financing_add_on_fee) * c.price) / 100;
+    else if (Number.isFinite(pctAll) && Number.isFinite(pctFee) && pctAll > pctFee) financing = ((pctAll - pctFee) * c.price) / 100;
+    else if (total != null && Number.isFinite(pctFee)) financing = Math.max(0, total - (c.price * pctFee) / 100 - fixed); // lo que sobra del total
+    else financing = 0;
+    if (financing < 1) financing = 0;
     out[c.key] = {
       percentage: Number.isFinite(pctFee) ? pctFee : total != null ? ((total - fixed - financing) / c.price) * 100 : null,
       fixed, financing, total: total != null && total >= fixed + financing ? total : null, source: 'meli',

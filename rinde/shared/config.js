@@ -31,6 +31,11 @@ export const THRESHOLDS = {
   PREMIUM_EXTRA_RATE: 0.12,
   // Desde este precio Mercado Libre obliga envío gratis (Argentina).
   FREE_SHIPPING_MIN_PRICE: 33000,
+  // Campañas: si los cargos de MeLi según listing_prices y según lo que pagó la publicación difieren más que esto,
+  // se muestra "cargos entre $X y $Y" y el veredicto usa el más alto.
+  FEE_RANGE_PCT: 0.05,
+  // Comparación por componente (comisión, cargo fijo, cuotas): tolerancia para decir "coincide".
+  FEE_MATCH_PCT: 0.02, FEE_MATCH_ABS: 50,
   // Solo sugerimos envío gratis si el envío cuesta menos que este % del precio.
   FREE_SHIPPING_MAX_SHARE: 0.2,
   // Si envío + cargo fijo superan este % del precio, marcamos "El envío gratis te come esta venta".

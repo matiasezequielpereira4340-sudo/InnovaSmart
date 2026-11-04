@@ -476,6 +476,8 @@ a.chip { text-decoration: none; }
 .camp-grid > div > span { font-size: .78rem; color: var(--muted); }
 .camp-grid b { font: 600 .95rem var(--font-num); overflow-wrap: anywhere; }
 .camp-grid b .neg, .camp-grid b.neg { color: var(--bad); }
+.camp-grid > div.camp-wide { grid-column: 1 / -1; }
+.camp-grid .camp-range { color: var(--ink, inherit); font-weight: 600; }
 .camp-notes { margin: 2px 0 0; padding-left: 18px; font-size: .85rem; color: var(--ink-2); }
 .camp-cost { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
 .camp-cost input { width: 130px; min-height: 36px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 8px; font: .85rem var(--font-num); background: var(--surface); color: var(--ink); }

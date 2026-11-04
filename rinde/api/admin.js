@@ -261,7 +261,11 @@ export default handler(async (req, res) => {
         if (!it?.category_id || !it.listing_type) continue;
         const key = `${it.listing_type}|${it.category_id}|${Math.round(l.unit_price)}`;
         if (samples.some((x) => x.key === key)) continue;
-        samples.push({ key, price: l.unit_price, listing_type: it.listing_type, category_id: it.category_id, real: ((o.fees.commission || 0) + (o.fees.financing || 0)) / (l.qty || 1) });
+        const q = l.qty || 1;
+        const fixedU = (o.fees.fixed_fee || 0) / q;
+        // En la facturación la "comisión" ya trae sumado el cargo fijo: lo separamos para comparar igual con igual.
+        samples.push({ key, price: l.unit_price, listing_type: it.listing_type, category_id: it.category_id, installments: o.data.installments ?? null,
+          billed: { commission: (o.fees.commission || 0) / q - fixedU, fixed: fixedU, financing: (o.fees.financing || 0) / q } });
         if (samples.length >= 6) break;
       }
       out.feeChecks = samples.length ? await checkFeesAgainstBilling(token, samples) : [];

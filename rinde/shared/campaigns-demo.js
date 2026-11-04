@@ -18,7 +18,9 @@ export function getCampaignsDemo() {
     { item_id: 'MLA1460211017', campaign: 'Campaña Hogar', cost: 150000, direct_amount: 189999 * 2, indirect_amount: 189999, direct_units: 2, indirect_units: 1, clicks: 1840,
       item: { title: 'Silla Gamer Ergonómica Reclinable Con Apoya Pies Almohadones', price: 189999, listing_type: 'gold_special', offersFreeShipping: true, shipCost: 9800, cost: 112000 } },
     { item_id: 'MLA1460211001', campaign: 'Campaña Audio', cost: 21000, direct_amount: 24999 * 14, indirect_amount: 24999 * 6, direct_units: 14, indirect_units: 6, clicks: 2310,
-      item: { title: 'Auriculares Bluetooth In Ear Inalámbricos Cancelación De Ruido TWS', price: 24999, listing_type: 'gold_pro', offersFreeShipping: true, shipCost: 4200, cost: 9800 } },
+      item: { title: 'Auriculares Bluetooth In Ear Inalámbricos Cancelación De Ruido TWS', price: 24999, listing_type: 'gold_pro', offersFreeShipping: true, shipCost: 4200, cost: 9800,
+        // Pagó menos en su última venta (bonificación): se muestra el rango y el veredicto usa el más caro.
+        feeHistory: { price: 24999, pct: 0.12, fixed: 2300, financingPct: 0.05 } } },
     { item_id: 'MLA1460211006', campaign: 'Campaña Audio', cost: 30000, direct_amount: 15999 * 6, indirect_amount: 15999 * 2, direct_units: 6, indirect_units: 2, clicks: 1210,
       item: { title: 'Cargador Rápido 33W USB-C Carga Turbo Compatible Samsung Motorola', price: 15999, listing_type: 'gold_pro', offersFreeShipping: true, shipCost: 4200, cost: 5200 } },
     { item_id: 'MLA1460211018', campaign: 'Campaña Audio', cost: 6000, direct_amount: 39999, indirect_amount: 0, direct_units: 1, indirect_units: 0, clicks: 640,
