@@ -24,6 +24,21 @@ export function getCampaignsDemo() {
     { item_id: 'MLA1460211018', campaign: 'Campaña Audio', cost: 6000, direct_amount: 39999, indirect_amount: 0, direct_units: 1, indirect_units: 0, clicks: 640,
       item: { title: 'Parlante Bluetooth Portátil Resistente Al Agua 20W Graves', price: 39999, listing_type: 'gold_special', offersFreeShipping: true, shipCost: 7900, cost: null } },
   ];
+  // Aviso del que Mercado Libre no devolvió métricas (así se ve cuando faltan).
+  ads.push({ item_id: 'MLA1460211003', campaign: 'Campaña Hogar', noMetrics: true, metricsMissing: ['cost', 'total_amount', 'direct_amount', 'indirect_amount'], status: 'active',
+    item: { title: 'Lámpara Led Escritorio Recargable Táctil 3 Tonos Plegable', price: 18999, listing_type: 'gold_pro', offersFreeShipping: true, shipCost: 4200, cost: 7200 } });
+  // Cargos de ejemplo "como si" vinieran de listing_prices (precio, categoría y tipo). La oferta sin tabla
+  // muestra el caso "No pudimos calcular los cargos de MeLi para este precio".
+  offers.push({ item_id: 'MLA1460211013', type: 'VOLUME', name: 'Descuento por cantidad', status: 'candidate', price_today: 27999, promo_price: 25199,
+    item: { title: 'Kit Herramientas 46 Piezas Llaves Tubo Crique Maletín', listing_type: 'gold_special', offersFreeShipping: true, shipCost: 4200, cost: 15500 } });
+  const fees = {};
+  const put = (lt, price, percentage, fixed = 0, financingPct = 0) => { fees[`${lt}||${Math.round(price)}`] = { percentage, fixed, financing: price * financingPct, source: 'meli' }; };
+  put('gold_special', 34999, 13.5); put('gold_special', 32499, 13.5, 2810);
+  put('gold_special', 32999, 13.5, 2810); put('gold_special', 28049, 13.5, 2810);
+  put('gold_pro', 36999, 14.5, 0, 0.115); put('gold_pro', 32499, 14.5, 2810, 0.115);
+  put('gold_special', 12499, 13.5, 1115); put('gold_special', 11999, 13.5, 1115);
+  put('gold_special', 8999, 13.5, 1115); put('gold_special', 7999, 13.5, 1115);
+  put('gold_special', 189999, 13.5); put('gold_pro', 24999, 14.5, 2300, 0.115); put('gold_pro', 15999, 14.5, 2300, 0.115); put('gold_special', 39999, 13.5);
   for (const x of [...offers, ...ads]) x.item.sku = x.item.sku || x.item_id;
-  return { offers, ads, taxRate: 0.035, source: 'demo' };
+  return { offers, ads, fees, taxRate: 0.035, source: 'demo' };
 }

@@ -48,15 +48,123 @@ export async function probeCampaignsAccess(t, sellerId, sampleItem) {
   const a = adv.body?.advertisers?.find((x) => x.site_id === 'MLA') || adv.body?.advertisers?.[0];
   rows.push(probeRow('Product Ads: anunciante', `/advertising/advertisers?product_id=PADS`, adv, { advertiser: !!a }));
   if (a) {
-    const to = new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    const metrics = 'clicks,prints,cost,acos,direct_amount,indirect_amount,direct_items_quantity,indirect_items_quantity';
-    const camp = await getRaw(t, `/advertising/MLA/advertisers/${a.advertiser_id}/product_ads/campaigns/search?limit=5&date_from=${from}&date_to=${to}&metrics=${metrics}`, { 'api-version': '2' });
-    rows.push(probeRow('Product Ads: campañas con métricas', `/advertising/MLA/advertisers/{id}/product_ads/campaigns/search`, camp));
-    const ads = await getRaw(t, `/advertising/MLA/advertisers/${a.advertiser_id}/product_ads/ads/search?limit=5&date_from=${from}&date_to=${to}&metrics=${metrics}`, { 'api-version': '2' });
-    rows.push(probeRow('Product Ads: publicaciones con métricas', `/advertising/MLA/advertisers/{id}/product_ads/ads/search`, ads, { fields: ads.body?.results?.[0] ? Object.keys(ads.body.results[0]).slice(0, 20) : [] }));
+    const mx = await readAdsMetrics(t, a.advertiser_id);
+    for (const x of mx.tried) rows.push({ name: `Product Ads: métricas por ${x.what}`, path: '', status: x.status, count: x.rows, message: x.status === 200 ? (x.withMetrics ? `${x.withMetrics} con métricas` : 'respondió SIN métricas') : null });
+    const sample = Object.values(mx.byItem)[0] || mx.campaigns.find((c) => c.metrics)?.metrics || null;
+    rows.push({ name: 'Product Ads: resultado', path: '', status: mx.source ? 200 : null,
+      message: mx.source ? `métricas por ${mx.source} (${mx.period.from} a ${mx.period.to})${sample?.missing?.length ? ` · faltan: ${sample.missing.join(', ')}` : ' · completas'}` : 'Mercado Libre no devolvió métricas por ninguna vía' });
   }
   return { rows, at: new Date().toISOString() };
+}
+
+/** Verifica listing_prices contra cargos reales ya facturados (precio, categoría y tipo de ventas guardadas). */
+export async function checkFeesAgainstBilling(t, samples) {
+  const fees = await readFees(t, samples.map((x) => ({ key: x.key, price: x.price, listing_type: x.listing_type, category_id: x.category_id })));
+  return samples.map((x) => {
+    const f = fees[x.key];
+    const meli = f ? (f.total != null ? f.total : x.price * (f.percentage / 100) + f.fixed + f.financing) : null;
+    return { price: x.price, listing_type: x.listing_type, category_id: x.category_id, real: x.real, meli, diffPct: meli != null && x.real ? (meli - x.real) / x.real : null };
+  });
+}
+
+
+
+// ── Métricas de Product Ads ──
+// Pedimos las métricas con fechas y lista explícita (api-version 2). Según un reporte de desarrolladores, MeLi
+// sacó las métricas por aviso (ads/search) el 30/05/2026 y ahora vienen por grupo de anuncios (ad_groups/search).
+// Probamos en orden y usamos la primera que devuelva métricas; si ninguna, decimos cuáles faltan.
+const METRICS_FULL = 'clicks,prints,cost,cpc,acos,direct_amount,indirect_amount,total_amount,direct_units_quantity,indirect_units_quantity,units_quantity';
+const METRICS_MIN = 'clicks,prints,cost,total_amount,units_quantity';
+const ymd = (d) => d.toISOString().slice(0, 10);
+const range30 = () => ({ from: ymd(new Date(Date.now() - 30 * 86400000)), to: ymd(new Date(Date.now() - 86400000)) });
+const num0 = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+
+/** Normaliza las métricas de MeLi. Los nombres que no vienen quedan en null (nunca en 0). */
+export function normMetrics(m) {
+  if (!m || typeof m !== 'object') return null;
+  const out = {
+    cost: num0(m.cost), clicks: num0(m.clicks), prints: num0(m.prints),
+    direct_amount: num0(m.direct_amount), indirect_amount: num0(m.indirect_amount), total_amount: num0(m.total_amount),
+    direct_units: num0(m.direct_units_quantity ?? m.direct_items_quantity), indirect_units: num0(m.indirect_units_quantity ?? m.indirect_items_quantity),
+    units: num0(m.units_quantity ?? m.advertising_items_quantity), acos_meli: num0(m.acos),
+  };
+  if (out.total_amount == null && out.direct_amount != null && out.indirect_amount != null) out.total_amount = out.direct_amount + out.indirect_amount;
+  out.missing = ['cost', 'clicks', 'prints', 'total_amount', 'direct_amount', 'indirect_amount'].filter((k) => out[k] == null);
+  return out.cost == null && out.total_amount == null && out.clicks == null ? null : out;
+}
+const metricsIn = (x) => normMetrics(x?.metrics || x?.metrics_summary || null);
+const sumMetrics = (a, b) => {
+  if (!a) return b; if (!b) return a;
+  const o = { ...a };
+  for (const k of ['cost', 'clicks', 'prints', 'direct_amount', 'indirect_amount', 'total_amount', 'direct_units', 'indirect_units', 'units']) o[k] = a[k] == null && b[k] == null ? null : (a[k] || 0) + (b[k] || 0);
+  o.missing = a.missing.filter((k) => b.missing.includes(k));
+  return o;
+};
+
+async function searchPaged(t, path, headers, max = 500) {
+  const rows = [];
+  let status = null;
+  for (let offset = 0; offset < max; offset += 50) {
+    const r = await getRaw(t, `${path}${path.includes('?') ? '&' : '?'}limit=50&offset=${offset}`, headers);
+    status = r.status;
+    if (r.status !== 200) return { status, rows, body: r.body };
+    const list = r.body?.results || [];
+    rows.push(...list);
+    if (list.length < 50) break;
+  }
+  return { status, rows };
+}
+
+/**
+ * Métricas de los últimos 30 días por publicación (o por campaña si MeLi no da más detalle).
+ * @returns { byItem: {item_id: metrics}, campaigns: [{id, name, metrics}], source, tried: [{what, status, withMetrics}] }
+ */
+export async function readAdsMetrics(t, advertiserId) {
+  const H = { 'api-version': '2' };
+  const { from, to } = range30();
+  const tried = [];
+  const byItem = {};
+  const base = `/advertising/MLA/advertisers/${advertiserId}/product_ads`;
+  // 1) Por aviso
+  for (const metrics of [METRICS_FULL, METRICS_MIN]) {
+    const r = await searchPaged(t, `${base}/ads/search?date_from=${from}&date_to=${to}&metrics=${metrics}&metrics_summary=true`, H);
+    const withM = r.rows.filter((x) => metricsIn(x)).length;
+    tried.push({ what: `avisos (ads/search${metrics === METRICS_MIN ? ', métricas mínimas' : ''})`, status: r.status, rows: r.rows.length, withMetrics: withM });
+    if (withM) { for (const x of r.rows) { const m = metricsIn(x); if (m) byItem[x.item_id || x.id] = m; } break; }
+    if (r.status === 200) break; // respondió bien pero sin métricas: no insistir con la lista mínima
+  }
+  // 2) Por grupo de anuncios (ITEM → publicación)
+  if (!Object.keys(byItem).length) {
+    let r = await searchPaged(t, `${base}/ad_groups/search?date_from=${from}&date_to=${to}&metrics=${METRICS_FULL}`, H);
+    tried.push({ what: 'grupos de anuncios (ad_groups/search, 30 días)', status: r.status, rows: r.rows.length, withMetrics: r.rows.filter((x) => metricsIn(x)).length });
+    if (r.status === 400 || (r.status === 200 && !r.rows.some((x) => metricsIn(x)))) {
+      // Algunas versiones solo aceptan un día: sumamos día por día (30 pedidos, de a uno).
+      let any = 0;
+      for (let d = 1; d <= 30; d++) {
+        const day = ymd(new Date(Date.now() - d * 86400000));
+        const rd = await searchPaged(t, `${base}/ad_groups/search?date_from=${day}&date_to=${day}&metrics=${METRICS_FULL}`, H, 200);
+        if (rd.status !== 200) { tried.push({ what: 'grupos de anuncios por día', status: rd.status, rows: 0, withMetrics: 0 }); break; }
+        for (const x of rd.rows) {
+          const m = metricsIn(x);
+          const id = x.item_id || (String(x.ad_group_type || x.type || '').toUpperCase() === 'ITEM' ? x.ad_group_external_id : null);
+          if (m && id) { byItem[id] = sumMetrics(byItem[id], m); any++; }
+        }
+      }
+      if (any) tried.push({ what: 'grupos de anuncios por día (sumados)', status: 200, rows: any, withMetrics: any });
+    } else {
+      for (const x of r.rows) {
+        const m = metricsIn(x);
+        const id = x.item_id || (String(x.ad_group_type || x.type || '').toUpperCase() === 'ITEM' ? x.ad_group_external_id : null);
+        if (m && id) byItem[id] = m;
+      }
+    }
+  }
+  // 3) Por campaña (resumen)
+  const rc = await searchPaged(t, `${base}/campaigns/search?date_from=${from}&date_to=${to}&metrics=${METRICS_FULL}`, H, 100);
+  const campaigns = rc.rows.map((c) => ({ id: c.id || c.campaign_id, name: c.name || c.campaign_name || `Campaña ${c.id}`, metrics: metricsIn(c) }));
+  tried.push({ what: 'campañas (campaigns/search)', status: rc.status, rows: rc.rows.length, withMetrics: campaigns.filter((c) => c.metrics).length });
+  const source = Object.keys(byItem).length ? 'publicación' : campaigns.some((c) => c.metrics) ? 'campaña' : null;
+  return { byItem, campaigns, source, tried, period: { from, to } };
 }
 
 /** Normaliza una oferta (publicación dentro de una campaña). */
@@ -97,27 +205,30 @@ export async function readCampaigns(t, sellerId, { maxPromos = 20, maxItemsPerPr
   });
 
   const ads = [];
+  let adsInfo = null;
   const adv = await getRaw(t, `/advertising/advertisers?product_id=PADS`, { 'Api-Version': '1' });
   const a = adv.body?.advertisers?.find((x) => x.site_id === 'MLA') || adv.body?.advertisers?.[0];
   if (adv.status !== 200 && adv.status !== 404) errors.push({ what: 'publicidad', status: adv.status, message: adv.body?.message || null });
   if (a) {
-    const to = new Date().toISOString().slice(0, 10);
-    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    const metrics = 'clicks,prints,cost,acos,direct_amount,indirect_amount,direct_items_quantity,indirect_items_quantity';
-    for (let offset = 0; offset < 1000; offset += 50) {
-      const r = await getRaw(t, `/advertising/MLA/advertisers/${a.advertiser_id}/product_ads/ads/search?limit=50&offset=${offset}&date_from=${from}&date_to=${to}&metrics=${metrics}`, { 'api-version': '2' });
-      if (r.status !== 200) { errors.push({ what: 'métricas de publicidad', status: r.status, message: r.body?.message || null }); break; }
-      const rows = r.body?.results || [];
-      for (const x of rows) {
-        const m = x.metrics || x;
-        ads.push({ item_id: x.item_id || x.id, campaign: x.campaign_name || (x.campaign_id ? `Campaña ${x.campaign_id}` : 'Sin campaña'), campaign_id: x.campaign_id || null,
-          cost: Number(m.cost || 0), direct_amount: Number(m.direct_amount || 0), indirect_amount: Number(m.indirect_amount || 0),
-          direct_units: Number(m.direct_items_quantity || 0), indirect_units: Number(m.indirect_items_quantity || 0), clicks: Number(m.clicks || 0), acos_meli: m.acos ?? null });
-      }
-      if (rows.length < 50) break;
+    const list = await searchPaged(t, `/advertising/MLA/advertisers/${a.advertiser_id}/product_ads/ads/search`, { 'api-version': '2' });
+    if (list.status !== 200) errors.push({ what: 'avisos de publicidad', status: list.status, message: list.body?.message || null });
+    const mx = await readAdsMetrics(t, a.advertiser_id);
+    const campName = Object.fromEntries(mx.campaigns.map((c) => [String(c.id), c.name]));
+    for (const x of list.rows) {
+      const id = x.item_id || x.id;
+      const m = mx.byItem[id] || null;
+      ads.push({
+        item_id: id, campaign_id: x.campaign_id || null, campaign: campName[String(x.campaign_id)] || (x.campaign_id ? `Campaña ${x.campaign_id}` : 'Sin campaña'),
+        status: x.status || null, title: x.title || null, price: Number(x.price || 0) || null, permalink: x.permalink || null,
+        noMetrics: !m, metricsMissing: m ? m.missing : ['cost', 'clicks', 'prints', 'total_amount', 'direct_amount', 'indirect_amount'],
+        cost: m?.cost ?? null, clicks: m?.clicks ?? null, prints: m?.prints ?? null,
+        direct_amount: m?.direct_amount ?? null, indirect_amount: m?.indirect_amount ?? null, total_amount: m?.total_amount ?? null,
+        direct_units: m?.direct_units ?? null, indirect_units: m?.indirect_units ?? null, units: m?.units ?? null, acos_meli: m?.acos_meli ?? null,
+      });
     }
+    adsInfo = { source: mx.source, tried: mx.tried, period: mx.period, campaigns: mx.campaigns };
   }
-  return { offers, ads, errors, hasAdvertiser: !!a };
+  return { offers, ads, adsInfo, errors, hasAdvertiser: !!a };
 }
 
 /** Cargos reales de MeLi a un precio (listing_prices), de a pocos pedidos. @returns { key: {percentage, fixed, financing} } */
@@ -127,13 +238,15 @@ export async function readFees(t, combos) {
     const r = await getRaw(t, `/sites/MLA/listing_prices?price=${Math.round(c.price)}&listing_type_id=${c.listing_type}${c.category_id ? `&category_id=${c.category_id}` : ''}`);
     if (r.status !== 200) return;
     const b = Array.isArray(r.body) ? r.body.find((x) => x.listing_type_id === c.listing_type) || r.body[0] : r.body;
-    const d = b?.sale_fee_details;
-    if (!d) return;
+    const d = b?.sale_fee_details || {};
+    if (!b || (b.sale_fee_amount == null && d.percentage_fee == null)) return;
     const pctFee = Number(d.percentage_fee ?? d.meli_percentage_fee);
+    const fixed = Number(d.fixed_fee || 0);
+    const financing = d.financing_add_on_fee != null ? (Number(d.financing_add_on_fee) * c.price) / 100 : 0;
+    const total = b.sale_fee_amount != null ? Number(b.sale_fee_amount) : null;
     out[c.key] = {
-      percentage: Number.isFinite(pctFee) ? pctFee : null,
-      fixed: Number(d.fixed_fee || 0),
-      financing: d.financing_add_on_fee != null ? (Number(d.financing_add_on_fee) * c.price) / 100 : 0,
+      percentage: Number.isFinite(pctFee) ? pctFee : total != null ? ((total - fixed - financing) / c.price) * 100 : null,
+      fixed, financing, total: total != null && total >= fixed + financing ? total : null, source: 'meli',
     };
   });
   return out;

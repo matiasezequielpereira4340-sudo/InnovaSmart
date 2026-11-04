@@ -46,15 +46,6 @@ export const THRESHOLDS = {
 // y competencia (la búsqueda pública /sites/MLA/search está cerrada para apps). Si MeLi habilita el permiso, poner true.
 export const FEATURES = { quality: false, competition: false };
 
-// Tabla ESTIMADA de cargos de Mercado Libre (Argentina) para simular un precio nuevo cuando no se puede
-// leer la oficial (/sites/MLA/listing_prices). Revisar y actualizar si MeLi cambia sus tarifas.
-export const FEE_SCHEDULE = {
-  commission: { gold_special: 0.135, gold_pro: 0.135, free: 0 },
-  financing: { gold_special: 0, gold_pro: 0.115, free: 0 }, // costo de cuotas sin interés (Premium)
-  // Cargo fijo por unidad debajo de cada umbral de precio.
-  fixedTiers: [{ below: 15000, fee: 1115 }, { below: 25000, fee: 2300 }, { below: 33000, fee: 2810 }],
-};
-
 export const LIMITS = {
   // Tope de tokens de salida de IA por diagnóstico completo de una cuenta.
   AI_MAX_OUTPUT_TOKENS_PER_DIAGNOSIS: 40000,

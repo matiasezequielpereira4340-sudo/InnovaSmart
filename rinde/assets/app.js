@@ -253,18 +253,29 @@ function costInput(it, key) {
   return `<form class="camp-cost" data-sku="${esc(it.sku || key)}"><label class="small" for="cc-${esc(key)}">Costo del producto</label><input id="cc-${esc(key)}" inputmode="decimal" placeholder="$ por unidad" value="${it.cost ?? ''}"><button class="btn btn-light btn-sm" type="submit">Guardar</button></form>`;
 }
 
+const MISSING_LABEL = { cost: 'gasto', clicks: 'clics', prints: 'impresiones', total_amount: 'ventas atribuidas', direct_amount: 'ventas directas', indirect_amount: 'ventas indirectas' };
+const FEE_SRC = { meli: 'cargo exacto de MeLi para este precio', historial: 'lo que esta publicación pagó en su última venta' };
+
 function promoCard(o, e, key) {
   const it = o.item;
   const hasCost = e.cost != null;
+  if (e.noFees) {
+    return `<article class="camp-card">
+      <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div><span class="tag tag-neutral">Sin veredicto</span></div>
+      <div class="tiny muted">${esc(PROMO_TYPE[o.type] || o.type)} · ${esc(o.name)} · ${o.status === 'started' ? 'activa' : 'te la ofrecen'}</div>
+      <div class="camp-grid"><div><span>Precio</span><b>${fmtMoney(o.price_today)} → ${fmtMoney(o.promo_price)}</b></div></div>
+      <p class="small" style="margin:6px 0 0">${esc(e.note)}</p>
+    </article>`;
+  }
   const quedan = (x) => fmtMoney(hasCost ? x.profit : x.beforeCost);
   return `<article class="camp-card">
-    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : '<span class="tag tag-neutral">Sin veredicto: falta el costo</span>'}</div>
+    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : `<span class="tag tag-neutral">${e.noFees ? 'Sin veredicto' : 'Sin veredicto: falta el costo'}</span>`}</div>
     <div class="tiny muted">${esc(PROMO_TYPE[o.type] || o.type)} · ${esc(o.name)} · ${o.status === 'started' ? 'activa' : 'te la ofrecen'}${e.contribution ? ` · Mercado Libre aporta ${fmtMoney(e.contribution)} por venta` : ''}</div>
     <div class="camp-grid">
       <div><span>Precio</span><b>${fmtMoney(o.price_today)} → ${fmtMoney(o.promo_price)}</b></div>
       <div><span>Te queda por venta${hasCost ? '' : ' (antes del costo)'}</span><b>${quedan(e.today)} → <span class="${(hasCost ? e.promo.profit : e.promo.beforeCost) < 0 ? 'neg' : ''}">${quedan(e.promo)}</span></b></div>
       <div><span>Para ganar lo mismo que hoy</span><b>${e.moreSales == null ? (hasCost && e.promo.profit <= 0 ? 'no alcanza: perdés por venta' : hasCost ? '—' : 'cargá el costo para saberlo') : e.moreSales === 0 ? 'no hace falta vender más' : `necesitás vender un ${pctTxt(e.moreSales)} más`}</b></div>
-      <div><span>Cargos de MeLi con la promo</span><b>${fmtMoney(e.promo.charges.total)}</b><span class="tiny">${e.promo.charges.estimated ? 'tabla estimada' : 'tabla de MeLi'} · comisión ${fmtMoney(e.promo.charges.commission)}${e.promo.charges.fixed ? ` · fijo ${fmtMoney(e.promo.charges.fixed)}` : ''}${e.promo.charges.financing ? ` · cuotas ${fmtMoney(e.promo.charges.financing)}` : ''}${e.promo.charges.shipping ? ` · envío ${fmtMoney(e.promo.charges.shipping)}` : ''}${e.promo.charges.taxes ? ` · retenciones ${fmtMoney(e.promo.charges.taxes)}` : ''}</span></div>
+      <div><span>Cargos de MeLi con la promo</span><b>${fmtMoney(e.promo.charges.total)}</b><span class="tiny">${esc(FEE_SRC[e.promo.charges.source] || 'MeLi')} · comisión ${fmtMoney(e.promo.charges.commission)}${e.promo.charges.fixed ? ` · fijo ${fmtMoney(e.promo.charges.fixed)}` : ''}${e.promo.charges.financing ? ` · cuotas ${fmtMoney(e.promo.charges.financing)}` : ''}${e.promo.charges.shipping ? ` · envío ${fmtMoney(e.promo.charges.shipping)}` : ''}${e.promo.charges.taxes ? ` · retenciones ${fmtMoney(e.promo.charges.taxes)}` : ''}</span></div>
     </div>
     ${e.crossings.length ? `<ul class="camp-notes">${e.crossings.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
     ${e.note ? `<p class="small muted" style="margin:6px 0 0">${esc(e.note)}</p>` : ''}
@@ -272,16 +283,27 @@ function promoCard(o, e, key) {
   </article>`;
 }
 
-function adsCard(a, e, key) {
+function adsCardNoMetrics(a) {
   const it = a.item;
   return `<article class="camp-card">
-    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : '<span class="tag tag-neutral">Sin veredicto: falta el costo</span>'}</div>
-    <div class="tiny muted">${esc(a.campaign || 'Product Ads')} · últimos 30 días</div>
+    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div><span class="tag tag-neutral">Sin métricas</span></div>
+    <div class="tiny muted">${esc(a.campaign || 'Product Ads')}${a.status ? ` · ${esc(a.status === 'active' ? 'activa' : a.status)}` : ''}</div>
+    <p class="small" style="margin:6px 0 0">Mercado Libre no devolvió las métricas de este aviso (faltan: ${esc((a.metricsMissing || []).map((k) => MISSING_LABEL[k] || k).join(', '))}). No mostramos ceros ni damos veredicto.</p>
+  </article>`;
+}
+
+function adsCard(a, e, key) {
+  const it = a.item;
+  const split = a.direct_amount != null && a.indirect_amount != null;
+  return `<article class="camp-card">
+    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : `<span class="tag tag-neutral">${e.noFees ? 'Sin veredicto' : 'Sin veredicto: falta el costo'}</span>`}</div>
+    <div class="tiny muted">${esc(a.campaign || 'Product Ads')} · últimos 30 días según Mercado Libre</div>
     <div class="camp-grid">
       <div><span>Gasto</span><b>${fmtMoney(a.cost)}</b></div>
-      <div><span>Ventas atribuidas</span><b>${fmtMoney(e.sales)}</b><span class="tiny">directas ${fmtMoney(a.direct_amount)} (${a.direct_units} u) · indirectas ${fmtMoney(a.indirect_amount)} (${a.indirect_units} u)</span></div>
+      <div><span>Ventas atribuidas</span><b>${fmtMoney(e.sales)}</b><span class="tiny">${split ? `directas ${fmtMoney(a.direct_amount)}${a.direct_units != null ? ` (${a.direct_units} u)` : ''} · indirectas ${fmtMoney(a.indirect_amount)}${a.indirect_units != null ? ` (${a.indirect_units} u)` : ''}` : 'Mercado Libre no separó directas e indirectas'}</span></div>
+      ${a.clicks != null || a.prints != null ? `<div><span>Clics / impresiones</span><b>${a.clicks ?? '—'} / ${a.prints ?? '—'}</b></div>` : ''}
       <div><span>ACOS</span><b class="${e.losing ? 'neg' : ''}">${pctTxt(e.acos)}</b></div>
-      <div><span>ACOS máximo que aguanta${e.cost == null ? ' (antes del costo)' : ''}</span><b>${pctTxt(e.maxAcos)}</b></div>
+      ${e.maxAcos != null ? `<div><span>ACOS máximo que aguanta${e.cost == null ? ' (antes del costo)' : ''}</span><b>${pctTxt(e.maxAcos)}</b></div>` : ''}
     </div>
     ${e.losing ? `<p class="small" style="margin:6px 0 0"><b>Cada venta por publicidad pierde plata:</b> el ACOS es mayor que tu margen antes de publicidad.</p>` : ''}
     ${e.note ? `<p class="small muted" style="margin:6px 0 0">${esc(e.note)}</p>` : ''}
@@ -306,7 +328,8 @@ function campaignsView() {
   <div class="camp-list">${ev.promos.map(({ o, e }, i) => promoCard(o, e, 'p' + i)).join('') || '<div class="empty">No tenés campañas ofrecidas ni activas ahora.</div>'}</div>
   <h2 class="camp-h">Publicidad (Product Ads)</h2>
   <p class="small muted" style="margin:0 0 10px">Ventas atribuidas según Mercado Libre: algunas hubieran salido igual sin publicidad. Si el ACOS es mayor que tu margen antes de publicidad, cada venta por publicidad pierde plata.</p>
-  <div class="camp-list">${ev.ads.map(({ a, e }, i) => adsCard(a, e, 'a' + i)).join('') || `<div class="empty">${c.hasAdvertiser === false ? 'No usás Product Ads.' : 'Sin publicidad en los últimos 30 días.'}</div>`}</div>
+  ${(c.adsInfo?.campaigns || []).filter((x) => x.metrics).length ? `<div class="camp-list" style="margin-bottom:10px">${c.adsInfo.campaigns.filter((x) => x.metrics).map((x) => `<article class="camp-card"><div class="camp-top"><div class="camp-title">${esc(x.name)}</div><span class="tag tag-neutral">Campaña</span></div><div class="camp-grid"><div><span>Gasto</span><b>${x.metrics.cost != null ? fmtMoney(x.metrics.cost) : '—'}</b></div><div><span>Ventas atribuidas</span><b>${x.metrics.total_amount != null ? fmtMoney(x.metrics.total_amount) : '—'}</b></div><div><span>ACOS</span><b>${x.metrics.cost != null && x.metrics.total_amount ? pctTxt(x.metrics.cost / x.metrics.total_amount) : '—'}</b></div>${x.metrics.clicks != null ? `<div><span>Clics / impresiones</span><b>${x.metrics.clicks} / ${x.metrics.prints ?? '—'}</b></div>` : ''}</div></article>`).join('')}</div>` : ''}
+  <div class="camp-list">${[...ev.ads.map(({ a, e }, i) => adsCard(a, e, 'a' + i)), ...(c.ads || []).filter((a) => a.noMetrics && a.item).map(adsCardNoMetrics)].join('') || `<div class="empty">${c.hasAdvertiser === false ? 'No usás Product Ads.' : 'Sin publicidad en los últimos 30 días.'}</div>`}</div>
   <div style="margin-top:16px">${helpBox()}</div>`;
   if (c.preview) {
     return head + `<div class="locked-preview"><div class="lp-inner" aria-hidden="true">${body}</div>

@@ -12,7 +12,7 @@ import { sha256 } from './_lib/crypto.js';
 import { getBillingConfig, saveBillingConfig, activateTransfer } from './_lib/mp.js';
 import { mergeBilling } from '../shared/plans.js';
 import { sendEmail, dailyAlertEmail, weeklyEmail } from './_lib/email.js';
-import { probeCampaignsAccess } from './_lib/campaigns-meli.js';
+import { probeCampaignsAccess, checkFeesAgainstBilling } from './_lib/campaigns-meli.js';
 import { appUrl } from './_lib/http.js';
 
 const yearStartAR = () => new Date(`${new Date(Date.now() - 3 * 3600000).getUTCFullYear()}-01-01T00:00:00-03:00`).toISOString();
@@ -248,6 +248,23 @@ export default handler(async (req, res) => {
       const token = await getAccessToken(user.id, req);
       const sample = (await db.select('rinde_items', { user_id: user.id }, { columns: 'data', limit: 50 })).map((r) => r.data).find((it) => it.status === 'active') || null;
       const out = await probeCampaignsAccess(token, user.meli_user_id, sample);
+      // Cargos: listing_prices (tarifa pública por precio, categoría y tipo) contra lo que MeLi realmente facturó.
+      const billed = await db.select('rinde_orders', { fees_source: 'facturación' }, { columns: 'user_id,data,fees', order: 'date_created.desc', limit: 200 });
+      const allItems = {};
+      const samples = [];
+      for (const o of billed) {
+        const l = (o.data?.lines || [])[0];
+        if (!l || (o.data.lines || []).length !== 1 || !o.fees) continue;
+        const k = `${o.user_id}:${l.item_id}`;
+        if (!(k in allItems)) allItems[k] = (await db.one('rinde_items', { user_id: o.user_id, item_id: l.item_id }, { columns: 'data' }))?.data || null;
+        const it = allItems[k];
+        if (!it?.category_id || !it.listing_type) continue;
+        const key = `${it.listing_type}|${it.category_id}|${Math.round(l.unit_price)}`;
+        if (samples.some((x) => x.key === key)) continue;
+        samples.push({ key, price: l.unit_price, listing_type: it.listing_type, category_id: it.category_id, real: ((o.fees.commission || 0) + (o.fees.financing || 0)) / (l.qty || 1) });
+        if (samples.length >= 6) break;
+      }
+      out.feeChecks = samples.length ? await checkFeesAgainstBilling(token, samples) : [];
       await db.upsert('rinde_settings', [{ key: 'campaigns_probe', value: { ...out, user: user.nickname }, updated_at: out.at }], 'key');
       return json(res, 200, out);
     }

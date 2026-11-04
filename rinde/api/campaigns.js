@@ -37,6 +37,15 @@ export default handler(async (req, res) => {
   const allShip = Object.values(shipBy).reduce((a, x) => ({ s: a.s + x.s, q: a.q + x.q }), { s: 0, q: 0 });
   const avgShip = allShip.q ? allShip.s / allShip.q : null;
 
+  // Cargo real que pagó cada publicación en su última venta facturada (respaldo si listing_prices falla).
+  const feeHist = {};
+  for (const l of [...lines].sort((x, y) => String(y.date).localeCompare(String(x.date)))) {
+    if (feeHist[l.item_id] || l.source !== 'facturación' || !l.qty || !l.unit_price) continue;
+    const gross = l.qty * l.unit_price;
+    const fixed = l.fees?.fixed_fee || 0;
+    feeHist[l.item_id] = { price: l.unit_price, pct: ((l.fees?.commission || 0) - fixed) / gross, fixed: fixed / l.qty, financingPct: (l.fees?.financing || 0) / gross };
+  }
+
   const ctxItem = (id, priceHint) => {
     const it = items[id];
     if (!it) return null;
@@ -47,22 +56,24 @@ export default handler(async (req, res) => {
       offersFreeShipping: !!it.shipping?.free_shipping, shipCost: shipBy[id] ? shipBy[id].s / shipBy[id].q : avgShip ?? 0, shipEstimated: !shipBy[id],
       cost: c?.purchase != null && c.purchase !== '' ? Number(c.purchase) : null,
       outOfSeason: !!season, seasonName: season?.season || null,
+      feeHistory: feeHist[id] || null,
     };
   };
   const offers = raw.offers.map((o) => {
     const item = ctxItem(o.item_id);
     return { ...o, price_today: o.price_today || item?.price || null, item };
   }).filter((o) => o.item);
-  const ads = raw.ads.map((a) => ({ ...a, item: ctxItem(a.item_id) })).filter((a) => a.item);
+  // Si la publicación del aviso no está en lo leído (por ejemplo, pausada), usamos título y precio que da Product Ads.
+  const ads = raw.ads.map((a) => ({ ...a, item: ctxItem(a.item_id) || (a.title ? { title: a.title, price: a.price, permalink: a.permalink, sku: a.item_id, listing_type: null, category_id: null, cost: null, feeHistory: null } : null) })).filter((a) => a.item);
 
   // Cargos reales de MeLi a cada precio (hoy y con promo).
   const combos = new Map();
   const addCombo = (it, p) => { if (p) { const k = keyFee(it.listing_type, it.category_id, p); combos.set(k, { key: k, price: p, listing_type: it.listing_type, category_id: it.category_id }); } };
   for (const o of offers) { addCombo(o.item, o.price_today); addCombo(o.item, o.promo_price); }
-  for (const a of ads) addCombo(a.item, a.item.price);
+  for (const a of ads) if (!a.noMetrics) addCombo(a.item, a.item.price);
   const fees = await readFees(token, [...combos.values()]);
 
-  const out = { offers, ads, taxRate, fees, errors: raw.errors, hasAdvertiser: raw.hasAdvertiser, fetched_at: new Date().toISOString() };
+  const out = { offers, ads, taxRate, fees, errors: raw.errors, hasAdvertiser: raw.hasAdvertiser, adsInfo: raw.adsInfo, fetched_at: new Date().toISOString() };
   const ev = evaluateAll(out);
   out.summary = ev.summary;
   out.actions = actionsByItem(ev);
