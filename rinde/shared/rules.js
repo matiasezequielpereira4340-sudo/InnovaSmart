@@ -179,9 +179,10 @@ export function seasonInfo(it, now = new Date()) {
 
 /** Grupo que ve el usuario (tarjetas y lista). Cada publicación cae en uno solo. */
 export function groupOf(it, cls, now = new Date()) {
+  // "Sana" solo si vende: una publicación sin ventas en 6 meses nunca cuenta como sana.
+  if (itemHistory(it).abandoned && !((it.sales30 || 0) > 0)) return 'ABANDONADAS';
   if (cls.category === 'SANA') return 'SANA';
   if (cls.category === 'PIERDE_PLATA') return 'PIERDE_PLATA';
-  if (itemHistory(it).abandoned) return 'ABANDONADAS';
   if (seasonInfo(it, now)) return 'TEMPORADA';
   if (cls.category === 'OPERATIVO') {
     const code = primaryReason(cls);

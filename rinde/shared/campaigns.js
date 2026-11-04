@@ -200,6 +200,29 @@ export function summarize(promos, ads) {
   return { conv, loseP, loseA, text: parts.length ? parts.join(', ').replace(/, ([^,]*)$/, ' y $1') : null };
 }
 
+/** Aviso o campaña que no gastó nada en el período (MeLi mandó gasto $0 y ninguna venta atribuida). */
+export const isIdleAds = (m) => m != null && m.cost === 0 && !(m.total_amount > 0) && !(m.direct_amount > 0) && !(m.indirect_amount > 0);
+
+/** Estado de una campaña de Product Ads en palabras, solo con lo que manda MeLi (null si no lo manda). */
+export function campaignStateText(c) {
+  const st = String(c?.status || '').toLowerCase();
+  if (st === 'paused') return 'está pausada';
+  if (c?.budget != null && Number(c.budget) <= 0) return 'no tiene presupuesto';
+  if (/budget|presupuesto/.test(st)) return 'se quedó sin presupuesto';
+  if (st === 'active') return 'está activa';
+  return null;
+}
+
+/** Separa la publicidad: los que gastaron (tarjeta completa) y los que no gastaron (una sola línea). */
+export function splitIdle(ads = [], campaigns = []) {
+  return {
+    ads: ads.filter((x) => !isIdleAds(x.a || x)),
+    idleAds: ads.filter((x) => isIdleAds(x.a || x)),
+    campaigns: campaigns.filter((c) => c.metrics && !isIdleAds(c.metrics)),
+    idleCampaigns: campaigns.filter((c) => c.metrics && isIdleAds(c.metrics)),
+  };
+}
+
 export const feeKey = (lt, cat, price) => `${lt}|${cat || ''}|${Math.round(price)}`;
 
 /** Arma las evaluaciones (para el resumen del diagnóstico y el plan de acción de cada publicación). */

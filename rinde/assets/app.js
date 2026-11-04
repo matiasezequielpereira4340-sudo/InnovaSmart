@@ -2,7 +2,8 @@
 import { I, hydrateIcons } from './icons.js';
 import { CATEGORIES, GROUPS, THRESHOLDS, waLink, PLAN_PRICE_ARS, EMAIL_ENABLED, COPY } from '../shared/config.js';
 import { fmtMoney, fmtPct, conversion, LISTING_LABEL, ALERT_LABELS, competitorRef, priceGap } from '../shared/rules.js';
-import { evaluateAll, summarize, actionsByItem } from '../shared/campaigns.js';
+import { evaluateAll, summarize, actionsByItem, splitIdle, campaignStateText } from '../shared/campaigns.js';
+import { regenState, planChanged } from '../shared/plans.js';
 import { getCampaignsDemo } from '../shared/campaigns-demo.js';
 import { buildModel, buildRuleSummary, costKey } from '../shared/model.js';
 
@@ -33,7 +34,7 @@ async function api(path, opts = {}) {
   const timer = setTimeout(() => ctl.abort(), timeout);
   let r;
   try {
-    r = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-Rinde-Page': (location.pathname + location.hash).slice(0, 200) }, ...rest, body: rest.body ? JSON.stringify(rest.body) : undefined, signal: ctl.signal });
+    r = await fetch(path, { credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-Rinde-Page': (location.pathname + location.hash).slice(0, 200) }, ...rest, body: rest.body ? JSON.stringify(rest.body) : undefined, signal: ctl.signal });
   } catch (e) {
     clearTimeout(timer);
     if (e.name === 'AbortError') throw Object.assign(new Error('El servidor tardó demasiado en responder.'), { status: 0, code: 'timeout' });
@@ -174,7 +175,7 @@ function sortedRows() {
 function diagnosisView() {
   const m = S.model;
   const sum = S.summary || buildRuleSummary(m);
-  const canRegen = DEMO || S.paid || S.user?.can_regenerate;
+  const { canRegen, showFreeUsed } = regenState({ demo: DEMO, paid: S.paid, user: S.user });
   const total = m.rows.length;
   const noCosts = m.hasAnyCost === false;
   // Tarjetas = los mismos grupos que la lista; cada publicación en uno solo, suman el total.
@@ -194,7 +195,7 @@ function diagnosisView() {
       ? `<button class="btn btn-light btn-sm" id="regen">${I.refresh} ${DEMO ? 'Regenerar (demo)' : 'Actualizar diagnóstico'}</button>`
       : `<a class="btn btn-light btn-sm" href="/suscribirme">${I.lock} Regenerar con Plan Rinde</a>`}
   </div>
-  ${!canRegen ? `<div class="notice notice-info" style="margin-bottom:14px">${I.info}<div>Ya usaste tu diagnóstico gratis: podés verlo siempre. Para actualizarlo cuando cambies algo, <a href="/suscribirme">suscribite al Plan Rinde</a>.</div></div>` : ''}
+  ${showFreeUsed ? `<div class="notice notice-info" style="margin-bottom:14px">${I.info}<div>Ya usaste tu diagnóstico gratis: podés verlo siempre. Para actualizarlo cuando cambies algo, <a href="/suscribirme">suscribite al Plan Rinde</a>.</div></div>` : ''}
   ${alertsBox()}
   ${campaignsNotice()}
   ${seasonBox(m)}
@@ -203,7 +204,8 @@ function diagnosisView() {
       <div class="label">Resumen de la cuenta · ${total} publicaciones</div>
       <h2 id="sum-h">${esc(sum.headline)}</h2>
       ${sum.revenueNote ? `<div class="rev-note">${esc(sum.revenueNote)}</div>` : ''}
-      <div class="problems">${(sum.problems || []).map((p) => problemBlock(p)).join('') || '<div class="problem"><b>Sin problemas graves</b><span>Tu cuenta está sana.</span></div>'}</div>
+      ${sum.startPlan ? `<div class="start-plan"><b>Plan para arrancar a vender</b><ol>${sum.startPlan.map((x) => `<li><b>${esc(x.label)}.</b> <span>${esc(x.detail)}</span>${topList(x.top)}</li>`).join('')}</ol></div>` : ''}
+      <div class="problems">${(sum.problems || []).map((p) => problemBlock(p)).join('') || (!sum.selling || sum.selling === 'vende' ? '<div class="problem"><b>Sin problemas graves</b><span>Tu cuenta está sana.</span></div>' : '')}</div>
       ${sum.seasonal ? `<div class="problems problems-extra">${problemBlock(sum.seasonal, 'De temporada')}</div>` : ''}
       ${sum.abandoned ? `<div class="problems problems-extra">${problemBlock(sum.abandoned, 'Abandonadas')}</div>` : ''}
       ${sum.shipNote ? `<p class="tip-line">${I.truck || I.info} ${esc(sum.shipNote)}</p>` : ''}
@@ -243,7 +245,15 @@ const pctTxt = (n) => (n == null ? '—' : Math.round(n * 100) + ' %');
 
 function loadCampaigns(force = false) {
   if (S.camp && !force) return;
-  if (DEMO || !S.paid) { S.camp = { ...getCampaignsDemo(), preview: !DEMO && !S.paid }; return; }
+  if (DEMO || !S.paid) {
+    S.camp = { ...getCampaignsDemo(), preview: !DEMO && !S.paid };
+    if (DEMO && new URLSearchParams(location.search).has('singasto')) {
+      // Variante: campaña pausada y avisos que no gastaron en 30 días.
+      S.camp.ads = S.camp.ads.map((a) => (a.noMetrics ? a : { ...a, cost: 0, direct_amount: 0, indirect_amount: 0, total_amount: 0, direct_units: 0, indirect_units: 0, clicks: 0 }));
+      S.camp.adsInfo = { campaigns: [{ id: 1, name: 'Campaña Libros', status: 'paused', metrics: { cost: 0, total_amount: 0, clicks: 0, missing: [] } }] };
+    }
+    return;
+  }
   S.camp = { loading: true };
   api(`/api/campaigns${force ? '?refresh=1' : ''}`, { timeout: 70000 }).then((d) => { S.camp = d; if (currentRoute() === 'campanas') render(); })
     .catch((e) => { S.camp = { error: e.message }; if (currentRoute() === 'campanas') render(); });
@@ -322,6 +332,21 @@ function adsCard(a, e, key) {
   </article>`;
 }
 
+// Avisos y campañas que no gastaron en el período: una sola línea con desplegable (sin tarjetas llenas de ceros).
+function idleBox(sp) {
+  const nA = sp.idleAds.length;
+  const nC = sp.idleCampaigns.length;
+  if (!nA && !nC) return '';
+  const head = nA
+    ? `${nA} aviso${nA === 1 ? '' : 's'} no gastaron en los últimos 30 días`.replace('1 aviso no gastaron', '1 aviso no gastó')
+    : `${nC} campaña${nC === 1 ? '' : 's'} no gastaron en los últimos 30 días`.replace('1 campaña no gastaron', '1 campaña no gastó');
+  const camps = sp.idleCampaigns.map((x) => { const st = campaignStateText(x); return `<li><b>${/^campa/i.test(x.name) ? '' : 'Campaña '}${esc(x.name)}</b>: gasto $0 en 30 días${st ? ` · ${esc(st)}` : ''}.</li>`; }).join('');
+  const ads = sp.idleAds.map(({ a }) => `<li>${a.item?.permalink ? `<a href="${esc(a.item.permalink)}" target="_blank" rel="noopener">${esc(a.item.title)}</a>` : esc(a.item?.title || a.item_id)}${a.status ? ` <span class="muted">· ${esc(a.status === 'active' ? 'activo' : a.status === 'paused' ? 'pausado' : a.status)}</span>` : ''}</li>`).join('');
+  return `<details class="camp-idle card"><summary>${I.info}<span><b>${esc(head)}</b>${nA && nC ? ` <span class="small muted">(y ${nC} campaña${nC === 1 ? '' : 's'} sin gasto)</span>` : ''} <span class="small muted">· ver cuáles</span></span></summary>
+    <p class="small muted" style="margin:8px 0 6px">Según Mercado Libre: gasto $0 y ninguna venta atribuida. No hay nada que evaluar hasta que gasten.</p>
+    ${camps ? `<ul class="small">${camps}</ul>` : ''}${ads ? `<ul class="small">${ads}</ul>` : ''}</details>`;
+}
+
 function campaignsView() {
   loadCampaigns();
   const c = S.camp;
@@ -331,6 +356,7 @@ function campaignsView() {
   if (c.error) return head + `<div class="notice notice-bad">${I.alert}<div>${esc(c.error)}</div></div>`;
   const ev = evaluateAll(c);
   const sum = ev.summary;
+  const sp = splitIdle(ev.ads, c.adsInfo?.campaigns || []);
   const errs = (c.errors || []).filter((x) => x.status);
   const body = `
   ${sum.text ? `<div class="camp-sum">${I.chart}<div><b>${esc(sum.text.charAt(0).toUpperCase() + sum.text.slice(1))}.</b></div></div>` : ''}
@@ -339,8 +365,9 @@ function campaignsView() {
   <div class="camp-list">${ev.promos.map(({ o, e }, i) => promoCard(o, e, 'p' + i)).join('') || '<div class="empty">No tenés campañas ofrecidas ni activas ahora.</div>'}</div>
   <h2 class="camp-h">Publicidad (Product Ads)</h2>
   <p class="small muted" style="margin:0 0 10px">Ventas atribuidas según Mercado Libre: algunas hubieran salido igual sin publicidad. Si el ACOS es mayor que tu margen antes de publicidad, cada venta por publicidad pierde plata.</p>
-  ${(c.adsInfo?.campaigns || []).filter((x) => x.metrics).length ? `<div class="camp-list" style="margin-bottom:10px">${c.adsInfo.campaigns.filter((x) => x.metrics).map((x) => `<article class="camp-card"><div class="camp-top"><div class="camp-title">${esc(x.name)}</div><span class="tag tag-neutral">Campaña</span></div><div class="camp-grid"><div><span>Gasto</span><b>${x.metrics.cost != null ? fmtMoney(x.metrics.cost) : '—'}</b></div><div><span>Ventas atribuidas</span><b>${x.metrics.total_amount != null ? fmtMoney(x.metrics.total_amount) : '—'}</b></div><div><span>ACOS</span><b>${x.metrics.cost != null && x.metrics.total_amount ? pctTxt(x.metrics.cost / x.metrics.total_amount) : '—'}</b></div>${x.metrics.clicks != null ? `<div><span>Clics / impresiones</span><b>${x.metrics.clicks} / ${x.metrics.prints ?? '—'}</b></div>` : ''}</div></article>`).join('')}</div>` : ''}
-  <div class="camp-list">${[...ev.ads.map(({ a, e }, i) => adsCard(a, e, 'a' + i)), ...(c.ads || []).filter((a) => a.noMetrics && a.item).map(adsCardNoMetrics)].join('') || `<div class="empty">${c.hasAdvertiser === false ? 'No usás Product Ads.' : 'Sin publicidad en los últimos 30 días.'}</div>`}</div>
+  ${sp.campaigns.length ? `<div class="camp-list" style="margin-bottom:10px">${sp.campaigns.map((x) => `<article class="camp-card"><div class="camp-top"><div class="camp-title">${esc(x.name)}</div><span class="tag tag-neutral">Campaña${campaignStateText(x) === 'está pausada' ? ' pausada' : ''}</span></div><div class="camp-grid"><div><span>Gasto</span><b>${x.metrics.cost != null ? fmtMoney(x.metrics.cost) : '—'}</b></div><div><span>Ventas atribuidas</span><b>${x.metrics.total_amount != null ? fmtMoney(x.metrics.total_amount) : '—'}</b></div><div><span>ACOS</span><b>${x.metrics.cost != null && x.metrics.total_amount ? pctTxt(x.metrics.cost / x.metrics.total_amount) : '—'}</b></div>${x.metrics.clicks != null ? `<div><span>Clics</span><b>${x.metrics.clicks}</b></div>` : ''}</div></article>`).join('')}</div>` : ''}
+  ${idleBox(sp)}
+  <div class="camp-list">${[...sp.ads.map(({ a, e }, i) => adsCard(a, e, 'a' + i)), ...(c.ads || []).filter((a) => a.noMetrics && a.item).map(adsCardNoMetrics)].join('') || (sp.idleAds.length || sp.idleCampaigns.length ? '' : `<div class="empty">${c.hasAdvertiser === false ? 'No usás Product Ads.' : 'Sin publicidad en los últimos 30 días.'}</div>`)}</div>
   <div style="margin-top:16px">${helpBox()}</div>`;
   if (c.preview) {
     return head + `<div class="locked-preview"><div class="lp-inner" aria-hidden="true">${body}</div>
@@ -974,6 +1001,12 @@ async function boot() {
       S.demoData.items.forEach((it) => { it.sales30 = 0; it.sales90 = 0; });
     }
     if (new URLSearchParams(location.search).has('sincostos')) S.demoData.costs = {};
+    if (new URLSearchParams(location.search).has('cuentanueva')) {
+      // Variante: cuenta chica que no vende (4 publicaciones sin ventas en 6 meses).
+      S.demoData.items = S.demoData.items.slice(0, 4).map((it, k) => ({ ...it, status: k % 2 ? 'paused' : 'active', sales30: 0, sales90: 0, sales180: 0, revenue180: 0, visits30: k ? 0 : 1, hist: undefined }));
+      S.demoData.lines = [];
+      S.demoData.revenue = { ...S.demoData.revenue, d30: 0, d90: 0, d180: 0, orders30: 0, months: {} };
+    }
     if (new URLSearchParams(location.search).has('temporada')) {
       // Variante de ejemplo: una tienda que vende sobre todo productos de invierno.
       const winter = ['Campera Polar Mujer Abrigo Invierno Capucha Corderito Talles', 'Frazada Polar Doble Faz Corderito 2 Plazas Invierno', 'Estufa Halógena 1200W 3 Velas Bajo Consumo', 'Pantuflas Corderito Mujer Invierno Suela Antideslizante', 'Bufanda Tejida Lana Invierno Unisex Colores', 'Pijama Polar Enterito Adulto Invierno Capucha', 'Guantes Térmicos Touch Invierno Moto Bici'];
@@ -1009,5 +1042,17 @@ async function boot() {
   }
 }
 
-window.addEventListener('hashchange', () => { if (S.model && currentRoute() !== 'conectando') render(); });
+// El plan se relee del servidor: si lo activaron (o se venció) con la página abierta, se actualiza sin recargar.
+let planCheckAt = 0;
+async function refreshPlan(force = false) {
+  if (DEMO || !S.model || (!force && Date.now() - planCheckAt < 20000)) return;
+  planCheckAt = Date.now();
+  try {
+    const me = await api('/api/me');
+    if (planChanged(S.paid, me)) { S.camp = null; await loadReal(); }
+    else S.user = { ...S.user, ...me.user };
+  } catch { /* sin conexión: se reintenta en el próximo cambio */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshPlan(); });
+window.addEventListener('hashchange', () => { if (S.model && currentRoute() !== 'conectando') { render(); refreshPlan(); } });
 boot();

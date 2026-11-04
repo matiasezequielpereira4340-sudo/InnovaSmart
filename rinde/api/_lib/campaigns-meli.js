@@ -174,7 +174,7 @@ export async function readAdsMetrics(t, advertiserId) {
   }
   // 3) Por campaña (resumen)
   const rc = await searchPaged(t, `${base}/campaigns/search?date_from=${from}&date_to=${to}&metrics=${METRICS_FULL}`, H, 100);
-  const campaigns = rc.rows.map((c) => ({ id: c.id || c.campaign_id, name: c.name || c.campaign_name || `Campaña ${c.id}`, metrics: metricsIn(c) }));
+  const campaigns = rc.rows.map((c) => ({ id: c.id || c.campaign_id, name: c.name || c.campaign_name || `Campaña ${c.id}`, status: c.status || null, budget: c.budget ?? c.daily_budget ?? null, metrics: metricsIn(c) }));
   tried.push({ what: 'campañas (campaigns/search)', status: rc.status, rows: rc.rows.length, withMetrics: campaigns.filter((c) => c.metrics).length });
   const source = Object.keys(byItem).length ? 'publicación' : campaigns.some((c) => c.metrics) ? 'campaña' : null;
   return { byItem, campaigns, source, tried, period: { from, to } };

@@ -1,7 +1,7 @@
 // Arma el "modelo" de la cuenta a partir de los datos crudos.
 // Mismo código para la cuenta real (servidor) y para el demo (navegador).
 import { classify, computeProductProfit, buildRulePlan, lostSalesEstimate, rankProblems, prorate, replacementWarning, buildAlerts, groupOf, seasonInfo, seasonOf, itemHistory, shippingSuggestion } from './rules.js';
-import { CATEGORIES, GROUPS, SEASONS } from './config.js';
+import { CATEGORIES, GROUPS, SEASONS, THRESHOLDS as T } from './config.js';
 import { listingScore, accountConversion } from './score.js';
 
 export function costKey(it) {
@@ -170,14 +170,57 @@ export const LOST_EXPLAIN = 'Es una estimación, no plata que perdiste. Sale sol
 const itemsLine = (top, more) => top.map((t) => ({ title: t.title, sold: t.sold, permalink: t.permalink, id: t.id })).concat(more ? [{ more }] : []);
 
 /** Resumen de cuenta por reglas (respaldo de la IA y base de datos para ella). */
+/**
+ * ¿La cuenta está vendiendo? "Sana" solo si vende. Sin ventas en 6 meses (o todas abandonadas) → no vende;
+ * con ventas en 6 meses pero ninguna en 30 días → frenada.
+ */
+export function sellingState(model) {
+  const rows = model.rows || [];
+  if (!rows.length) return { state: 'sin_publicaciones', n: 0 };
+  const u180 = rows.reduce((t, r) => t + (r.it.sales180 ?? r.it.sales90 ?? 0), 0);
+  const u30 = rows.reduce((t, r) => t + (r.it.sales30 || 0), 0);
+  const allAbandoned = rows.every((r) => r.group === 'ABANDONADAS');
+  // Si la facturación muestra ventas en 30 días (por ejemplo, de publicaciones ya cerradas), la cuenta sí vende.
+  if ((u180 === 0 || allAbandoned) && !(model.revenue?.d30 > 0)) return { state: 'no_vende', n: rows.length, abandoned: rows.filter((r) => r.group === 'ABANDONADAS').length };
+  if (u30 === 0 && !(model.revenue?.d30 > 0)) return { state: 'frenada', n: rows.length };
+  return { state: 'vende', n: rows.length };
+}
+
+/** Plan para arrancar a vender: mejorar las 3 con mejor nota, revisar precio y fotos, cerrar las que no tienen salida. */
+export function startPlan(model) {
+  const rows = (model.rows || []).filter((r) => r.it.status !== 'closed');
+  const scored = rows.filter((r) => r.score?.score != null).sort((a, b) => b.score.score - a.score.score);
+  const best = (scored.length ? scored : rows).slice(0, 3);
+  const rest = rows.filter((r) => !best.includes(r));
+  const steps = [];
+  if (best.length) {
+    steps.push({ label: `Mejorá a fondo ${best.length === 1 ? 'la que tiene mejor nota' : `las ${best.length} con mejor nota`}`,
+      detail: 'Son las que menos trabajo necesitan para vender. Seguí las mejoras de cada una en la pestaña Publicaciones.',
+      top: best.map((r) => ({ id: r.it.id, title: r.it.title + (r.score?.score != null ? ` (nota ${r.score.score})` : ''), permalink: r.it.permalink || null, sold: 0 })) });
+  }
+  const few = rows.filter((r) => (r.it.pictures_count ?? 0) < T.PICTURES_MIN).length;
+  steps.push({ label: 'Revisá precio y fotos', detail: `Compará tu precio con publicaciones parecidas en Mercado Libre${few ? ` y sumá fotos: ${few} publicación(es) tienen menos de ${T.PICTURES_MIN}` : ''}. Sin ventas, el precio y la foto principal son lo primero que frena.` });
+  steps.push({ label: 'Cerrá las que no tienen salida', detail: rest.length
+    ? `Si después de mejorarlas siguen sin vender, cerrá las que no tienen demanda: ocupan stock y atención (${rest.length} además de las de arriba).`
+    : 'Si después de mejorarlas siguen sin vender, cerralas: ocupan stock y atención.' });
+  return steps;
+}
+
 export function buildRuleSummary(model) {
   const p = model.problems;
   const rev30 = model.revenue?.d30;
-  return {
-    headline: model.lostTotal > 0
+  const sell = sellingState(model);
+  const plan = sell.state === 'no_vende' || sell.state === 'frenada' ? startPlan(model) : null;
+  const headline = sell.state === 'no_vende'
+    ? `Tu cuenta no está vendiendo: ${sell.n} ${sell.n === 1 ? 'publicación' : 'publicaciones'} sin ventas en 6 meses`
+    : model.lostTotal > 0
       ? `Ventas que podrías estar perdiendo: ~${fmtMoney(model.lostTotal)}/mes (estimado)`
-      : p.length ? 'No vemos ventas perdidas importantes, pero hay cosas para mejorar.' : 'Tu cuenta está sana. Seguí así y cargá tus costos para controlar el margen.',
-    revenueNote: model.revenue?.monthlyAvg180 != null && rev30 != null
+      : sell.state === 'frenada' ? 'Tu cuenta no vendió nada en los últimos 30 días'
+        : p.length ? 'No vemos ventas perdidas importantes, pero hay cosas para mejorar.' : 'Tu cuenta está sana. Seguí así y cargá tus costos para controlar el margen.';
+  return {
+    headline, selling: sell.state, startPlan: plan,
+    revenueNote: sell.state === 'no_vende' && !(model.revenue?.monthlyAvg180 > 0) ? 'Sin ventas en los últimos 6 meses'
+      : model.revenue?.monthlyAvg180 != null && rev30 != null
       ? `En los últimos 6 meses vendías ~${fmtMoney(model.revenue.monthlyAvg180)}/mes en promedio; en los últimos 30 días, ${fmtMoney(rev30)}`
       : rev30 != null ? `Tu facturación de los últimos 30 días: ${fmtMoney(rev30)}` : null,
     explain: model.lostTotal > 0 ? LOST_EXPLAIN : null,
@@ -206,7 +249,7 @@ export function buildRuleSummary(model) {
     shipNote: model.shipCounts && (model.shipCounts.full || model.shipCounts.flex)
       ? [model.shipCounts.full ? `${model.shipCounts.full} publicación(es) listas para Full` : '', model.shipCounts.flex ? `${model.shipCounts.flex} para sumar Flex` : ''].filter(Boolean).join(' y ') + ': venden sostenido todas las semanas. Lo ves en el plan de cada una (no suma al estimado).'
       : null,
-    first: p[0] ? (FIX_HINT[p[0].code] || '').replace(/:$/, '.') : null,
+    first: plan ? `${plan[0].label}.` : p[0] ? (FIX_HINT[p[0].code] || '').replace(/:$/, '.') : null,
     source: 'reglas',
   };
 }

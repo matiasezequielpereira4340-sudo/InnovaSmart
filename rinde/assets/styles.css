@@ -251,6 +251,10 @@ details.faq p { color: var(--ink-2); max-width: 62ch; }
 .summary-card .top-items a { color: var(--panel-ink); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 .summary-card .top-items .sold { color: var(--panel-muted); white-space: nowrap; font-size: .8rem; }
 .summary-card .top-items .more { list-style: none; margin-left: -18px; color: var(--panel-muted); }
+.summary-card .start-plan { margin: 16px 0 0; padding: 14px 0 4px; border-top: 1px dashed var(--panel-line); }
+.summary-card .start-plan > b { display: block; font-size: 1.02rem; margin-bottom: 6px; }
+.summary-card .start-plan ol { margin: 0; padding-left: 20px; display: grid; gap: 10px; }
+.summary-card .start-plan li span { color: var(--panel-muted); font-size: .9rem; }
 
 .cat-filter { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 12px; scrollbar-width: none; }
 .cat-filter::-webkit-scrollbar { display: none; }
@@ -486,3 +490,7 @@ a.chip { text-decoration: none; }
 .locked-preview .lp-inner { filter: blur(3px); opacity: .55; pointer-events: none; user-select: none; max-height: 900px; overflow: hidden; }
 .locked-preview .lp-cta { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); width: min(92%, 420px); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
 @media (max-width: 420px) { .tabs a span { font-size: .68rem; } }
+.camp-idle { margin: 0 0 10px; padding: 10px 14px; }
+.camp-idle summary { cursor: pointer; display: grid; grid-template-columns: 16px 1fr; gap: 8px; align-items: start; }
+.camp-idle summary svg { width: 16px; height: 16px; margin-top: 3px; }
+.camp-idle ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; }

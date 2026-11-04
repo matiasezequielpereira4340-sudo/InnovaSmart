@@ -124,3 +124,20 @@ export function billingSummary(u) {
     grace_until: u.grace_until || null,
   };
 }
+
+
+/**
+ * Qué puede hacer el usuario con el diagnóstico según el plan que manda el servidor.
+ * Con Plan Rinde NUNCA se muestra "Ya usaste tu diagnóstico gratis".
+ */
+export function regenState({ demo = false, paid = false, user = null } = {}) {
+  const rinde = !!paid || user?.plan === 'rinde';
+  const canRegen = !!demo || rinde || !!user?.can_regenerate;
+  return { rinde, canRegen, showFreeUsed: !canRegen && !rinde };
+}
+
+/** ¿Cambió el plan respecto de lo que tiene cargado la página? (para releer sin esperar a que recargue). */
+export function planChanged(currentPaid, me) {
+  if (!me?.user) return false;
+  return (me.user.plan === 'rinde') !== !!currentPaid;
+}
