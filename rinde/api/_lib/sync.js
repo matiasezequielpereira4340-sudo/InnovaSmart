@@ -86,6 +86,7 @@ export async function step(userId, sellerId) {
         it.quality = perf[i]?.__error ? null : perf[i];
         it.competition = comp[i]?.__error ? null : comp[i];
         it.attrs = meli.missingAttrs(b, cats[b.category_id]);
+        it.title_max = cats[b.category_id]?.max_title ?? null;
         it.desc_len = descs[i]?.__error ? null : descs[i];
         it.questions_unanswered = q?.count || 0;
         it.oldest_question_hours = q?.oldest ? Math.round((Date.now() - q.oldest) / 3600000) : 0;

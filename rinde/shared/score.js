@@ -1,15 +1,18 @@
 // Rinde — Nota de publicación (0 a 100), propia, solo con datos que Mercado Libre sí nos da.
+// Regla: ninguna mejora puede empeorar el margen sin decir cuánto cuesta. Premium y envío gratis
+// solo cuentan cuando tienen sentido (precio alto / envío barato) y siempre con el costo a la vista.
+import { THRESHOLDS as T } from './config.js';
 // Cada criterio tiene un peso. Si un dato no se pudo leer, ese criterio no cuenta y su peso se reparte entre los demás.
 // Nunca se muestra "sin dato": se explica con lo que hay.
 
 export const SCORE_WEIGHTS = {
   atributos: 25,   // atributos completos contra los que pide la categoría
   fotos: 15,       // cantidad (mínimo 6) y resolución
-  titulo: 15,      // largo ideal 45-60, sin palabras repetidas ni en mayúsculas
+  titulo: 15,      // no muy corto ni más largo que lo que acepta la categoría; sin palabras repetidas ni mayúsculas
   descripcion: 10, // tiene descripción y es completa
   video: 5,        // tiene video o clip
-  tipo: 10,        // Premium vs Clásica
-  envio: 8,        // envío gratis
+  tipo: 10,        // gratuita resta; Clásica vs Premium solo en precios altos (con costo)
+  envio: 8,        // envío gratis solo debajo del mínimo y si cuesta menos del 20 % (con costo)
   preguntas: 7,    // preguntas sin responder
   conversion: 5,   // conversión contra el promedio de su propia cuenta (con visitas suficientes)
 };
@@ -35,17 +38,20 @@ export function accountConversion(items) {
   return v > 0 ? s / v : null;
 }
 
-function titleCheck(title) {
+function titleCheck(title, max) {
   const t = String(title || '').trim();
   const len = t.length;
-  const words = t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9ñ]+/).filter((w) => w.length > 2);
+  const words = t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9ñ]+/).filter((w) => w.length > 2);
   const seen = {}; const repeated = [];
   for (const w of words) { seen[w] = (seen[w] || 0) + 1; if (seen[w] === 2) repeated.push(w); }
   const caps = t.split(/\s+/).filter((w) => w.length > 3 && /[A-ZÁÉÍÓÚÑ]/.test(w) && w === w.toUpperCase() && !/\d/.test(w));
-  let s = len >= 45 && len <= 60 ? 1 : len < 45 ? clamp((len - 15) / 30) : clamp(1 - (len - 60) / 20);
+  // Largo: nunca se penaliza un título que Mercado Libre acepta. Solo si pasa el máximo de la categoría
+  // o si es muy corto (menos de 40 caracteres: le faltan palabras clave).
+  const over = max && len > max;
+  let s = over ? 0.3 : len >= 40 ? 1 : Math.max(0, Math.min(1, (len - 15) / 25));
   if (repeated.length) s -= 0.25;
   if (caps.length >= 2) s -= 0.25;
-  return { score: clamp(s), len, repeated, caps };
+  return { score: clamp(s), len, repeated, caps, over, max };
 }
 
 /**
@@ -85,16 +91,15 @@ export function listingScore(it, ctx = {}) {
     c.fotos = { value, note: `${n} foto${n === 1 ? '' : 's'}${small ? `, ${small} chica${small > 1 ? 's' : ''}` : ''}`, fix };
   }
 
-  // c) Título
+  // c) Título (el máximo lo da la categoría: hoy muchas aceptan más de 60)
   if (it.title) {
-    const t = titleCheck(it.title);
+    const t = titleCheck(it.title, it.title_max);
     let fix = null;
-    if (t.len < 45) fix = `El título tiene ${t.len} caracteres: llevalo a 45-60 con producto, marca, modelo y un atributo clave.`;
-    else if (t.len > 60) fix = `El título tiene ${t.len} caracteres: recortalo a 60 como máximo.`;
+    if (t.over) fix = `El título tiene ${t.len} caracteres y la categoría acepta ${t.max}: recortalo para que no se corte.`;
+    else if (t.len < 40) fix = `El título tiene ${t.len} caracteres: sumale producto, marca, modelo y un atributo clave${t.max ? ` (la categoría acepta hasta ${t.max})` : ''}.`;
     else if (t.repeated.length) fix = `Repetís "${t.repeated.slice(0, 2).join('", "')}" en el título: usá ese espacio para otra palabra clave.`;
     else if (t.caps.length >= 2) fix = `Sacá las mayúsculas del título (${t.caps.slice(0, 3).join(', ')}).`;
-    if (!fix && t.repeated.length) fix = `Repetís "${t.repeated[0]}" en el título.`;
-    c.titulo = { value: t.score, note: `${t.len} caracteres`, fix };
+    c.titulo = { value: t.score, note: `${t.len} caracteres${t.max ? ` de ${t.max}` : ''}`, fix };
   }
 
   // d) Descripción
@@ -111,16 +116,25 @@ export function listingScore(it, ctx = {}) {
   // e) Video / clip
   if (it.video != null) c.video = { value: it.video ? 1 : 0, note: it.video ? 'Tiene' : 'No tiene', fix: it.video ? null : 'Sumá un video o clip corto mostrando el producto en uso.' };
 
-  // f) Premium vs Clásica
-  if (it.listing_type) {
-    const v = it.listing_type === 'gold_pro' ? 1 : it.listing_type === 'gold_special' ? 0.5 : 0;
-    c.tipo = { value: v, note: { gold_pro: 'Premium', gold_special: 'Clásica', free: 'Gratuita' }[it.listing_type] || it.listing_type,
-      fix: v < 1 ? (it.listing_type === 'free' ? 'Es gratuita: pasala a Clásica o Premium para que aparezca en las búsquedas.' : 'Es Clásica: pasala a Premium para ofrecer cuotas sin interés (revisá que el margen lo banque).') : null };
+  // f) Tipo de publicación. Gratuita siempre resta (casi no aparece). Clásica vs Premium solo cuenta
+  //    si el precio es alto (ahí las cuotas pesan), y la sugerencia dice cuánto cuesta.
+  if (it.listing_type === 'free') {
+    c.tipo = { value: 0, note: 'Gratuita', fix: 'Es gratuita: pasala a Clásica (sin costo extra de cuotas) para que aparezca en las búsquedas.' };
+  } else if (it.listing_type && (it.price || 0) >= T.PREMIUM_MIN_PRICE) {
+    const premium = it.listing_type === 'gold_pro';
+    const extra = Math.round((it.price || 0) * T.PREMIUM_EXTRA_RATE);
+    c.tipo = { value: premium ? 1 : 0.5, note: premium ? 'Premium' : 'Clásica',
+      fix: premium ? null : `Es Clásica y vale $${Math.round(it.price).toLocaleString('es-AR')}: en precios altos las cuotas sin interés pesan. Premium te cuesta ~$${extra.toLocaleString('es-AR')} más por venta (estimado ${Math.round(T.PREMIUM_EXTRA_RATE * 100)} %): probalo solo si el margen lo banca.` };
   }
 
-  // g) Envío gratis
-  if (it.shipping && typeof it.shipping.free_shipping === 'boolean') {
-    c.envio = { value: it.shipping.free_shipping ? 1 : 0, note: it.shipping.free_shipping ? 'Sí' : 'No', fix: it.shipping.free_shipping ? null : 'Ofrecé envío gratis (o incluilo en el precio): pesa en el ranking y en la compra.' };
+  // g) Envío gratis. Desde el mínimo MeLi lo obliga (no se mide). Debajo, solo se sugiere si el envío
+  //    cuesta poco (menos del 20 % del precio) y se dice cuánto cuesta; si no, no se mide.
+  if (it.shipping && typeof it.shipping.free_shipping === 'boolean' && (it.price || 0) < T.FREE_SHIPPING_MIN_PRICE && ctx.shipCost != null && it.price) {
+    const share = ctx.shipCost / it.price;
+    if (it.shipping.free_shipping || share < T.FREE_SHIPPING_MAX_SHARE) {
+      c.envio = { value: it.shipping.free_shipping ? 1 : 0, note: it.shipping.free_shipping ? 'Sí' : 'No',
+        fix: it.shipping.free_shipping ? null : `Ofrecé envío gratis: te cuesta ~$${Math.round(ctx.shipCost).toLocaleString('es-AR')} por venta (${pct(share)} del precio) y pesa en el ranking.` };
+    }
   }
 
   // h) Preguntas sin responder
@@ -133,7 +147,7 @@ export function listingScore(it, ctx = {}) {
   if (ctx.avgConv && (it.visits30 || 0) >= MIN_VISITS_CONV) {
     const conv = (it.sales30 || 0) / it.visits30;
     c.conversion = { value: clamp(conv / ctx.avgConv), note: `${pct(conv)} vs ${pct(ctx.avgConv)} de tu cuenta`,
-      fix: conv < ctx.avgConv ? `Convierte ${pct(conv)} contra ${pct(ctx.avgConv)} de tu cuenta: revisá precio, primera foto y envío.` : null };
+      fix: conv < ctx.avgConv ? `Convierte ${pct(conv)} contra ${pct(ctx.avgConv)} de tu cuenta: revisá primera foto, fotos y descripción (si bajás el precio, mirá antes el margen en Rentabilidad).` : null };
   }
 
   // Peso repartido entre los criterios que se pudieron medir.

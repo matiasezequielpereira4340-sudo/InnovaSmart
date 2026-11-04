@@ -38,7 +38,7 @@ export function buildModel(data) {
     const season = group === 'TEMPORADA' ? seasonInfo(it) : null;
     // De temporada: el plan de reglas manda (la IA podría decir "reponé stock" de un producto de invierno en noviembre).
     const plan = season ? buildRulePlan(it, cls, profit) : plans[it.id] || buildRulePlan(it, cls, profit);
-    const score = listingScore(it, scoreCtx);
+    const score = listingScore(it, { ...scoreCtx, shipCost: profit.units && profit.fees.shipping > 0 ? profit.fees.shipping / profit.units : null });
     // Sugerencia Full/Flex (solo productos validados). Va al plan y a las mejoras de la nota; no suma plata.
     const ship = shippingSuggestion(it, profit, seller);
     let planOut = plan;

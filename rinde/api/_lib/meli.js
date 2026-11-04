@@ -188,12 +188,14 @@ export async function getCategoryAttrs(t, catIds) {
   await pool(missing, 2, async (id) => {
     const d = await meliGet(t, `/categories/${id}/attributes`, { allow404: true });
     if (!Array.isArray(d)) return;
+    const info = await meliGet(t, `/categories/${id}`, { allow404: true }).catch(() => null);
+    const maxTitle = Number(info?.settings?.max_title_length) || null;
     const pick = (a) => ({ id: a.id, name: a.name });
     const usable = d.filter((a) => !SKIP_ATTRS.has(a.id) && !a.tags?.hidden && !a.tags?.read_only && !a.tags?.fixed && !a.tags?.others);
     const required = usable.filter((a) => a.tags?.required || a.tags?.catalog_required).map(pick);
     const reqIds = new Set(required.map((a) => a.id));
     const recommended = usable.filter((a) => !reqIds.has(a.id) && a.relevance === 1).map(pick);
-    out[id] = { required, recommended, at: new Date().toISOString() };
+    out[id] = { required, recommended, max_title: maxTitle, at: new Date().toISOString() };
     fresh.push({ key: `cat_attrs:${id}`, value: out[id], updated_at: new Date().toISOString() });
   });
   if (fresh.length) await db.upsert('rinde_settings', fresh, 'key').catch(() => {});

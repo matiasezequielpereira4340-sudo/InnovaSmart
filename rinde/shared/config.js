@@ -25,6 +25,14 @@ export const THRESHOLDS = {
   // Si el margen a costo de reposición es menor que el margen a costo de compra
   // por más de estos puntos, alertamos.
   REPLACEMENT_GAP_ALERT: 0.1,
+  // Nota de publicación: desde este precio las cuotas sin interés (Premium) pesan en la compra.
+  PREMIUM_MIN_PRICE: 50000,
+  // Costo extra estimado de Premium sobre Clásica (comisión por cuotas), como % del precio.
+  PREMIUM_EXTRA_RATE: 0.12,
+  // Desde este precio Mercado Libre obliga envío gratis (Argentina).
+  FREE_SHIPPING_MIN_PRICE: 33000,
+  // Solo sugerimos envío gratis si el envío cuesta menos que este % del precio.
+  FREE_SHIPPING_MAX_SHARE: 0.2,
   // Si envío + cargo fijo superan este % del precio, marcamos "El envío gratis te come esta venta".
   SHIP_FIXED_EATS: 0.5,
   // Preguntas sin responder hace más de estas horas disparan alerta.
