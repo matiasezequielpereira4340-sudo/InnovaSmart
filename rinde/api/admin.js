@@ -131,7 +131,7 @@ export default handler(async (req, res) => {
       revenue: m.revenue,
       lostTotal: m.lostTotal,
       sanity: m.sanity,
-      counts: m.counts,
+      counts: m.groupCounts,
       headline: rule.headline,
       problems: rule.problems.map((p) => ({ label: p.label, detail: p.detail })),
       abandoned: m.abandoned?.count || 0,
@@ -181,8 +181,10 @@ export default handler(async (req, res) => {
       // Vuelve a leer la cuenta desde MeLi (solo lectura) y regenera el diagnóstico SIN gastar el gratis.
       const user = await db.one('rinde_users', { id: body.user_id });
       if (!user) throw new AppError(404, 'No existe ese usuario.');
-      let job = body.start ? await startJob(user.id) : await getJob(user.id);
-      if (!job) job = await startJob(user.id);
+      // stored: true → regenera SOLO con los datos guardados (no vuelve a leer Mercado Libre).
+      let job = body.stored ? await getJob(user.id) : body.start ? await startJob(user.id) : await getJob(user.id);
+      if (!job) throw new AppError(409, 'Esta cuenta todavía no tiene datos leídos.');
+      if (body.stored && job.status !== 'done') throw new AppError(409, 'La última lectura no terminó: usá "Releer y regenerar".');
       const t0 = Date.now();
       while (job.status !== 'done' && Date.now() - t0 < 45000) {
         job = await step(user.id, user.meli_user_id);
@@ -192,7 +194,7 @@ export default handler(async (req, res) => {
       const { data } = await loadAccount(user.id);
       const m = buildModel(data);
       const summary = { ...buildRuleSummary(m), regenerated_by_admin: true };
-      await db.insert('rinde_diagnoses', [{ user_id: user.id, input_hash: 'admin-' + Date.now(), summary, tokens_used: 0, sync_finished_at: job.finished_at, counts: m.counts }]);
+      await db.insert('rinde_diagnoses', [{ user_id: user.id, input_hash: 'admin-' + Date.now(), summary, tokens_used: 0, sync_finished_at: job.finished_at, counts: m.groupCounts }]);
       return json(res, 200, { done: true, sync: progressOf(job), headline: summary.headline, revenue: m.revenue, lostTotal: m.lostTotal, sanity: m.sanity });
     }
     if (body.action === 'validate') {

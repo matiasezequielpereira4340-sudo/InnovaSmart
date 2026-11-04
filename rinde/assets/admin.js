@@ -290,6 +290,7 @@ function accountCard() {
     <h2 id="acc-h" style="font-size:1.15rem;margin:0">Facturación real y diagnóstico de esta cuenta</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-light btn-sm" id="acc-load" ${acctBusy ? 'disabled' : ''}>${I.chart} Ver facturación real</button>
+      <button class="btn btn-light btn-sm" id="acc-stored" ${acctBusy ? 'disabled' : ''}>${I.refresh} Regenerar con datos guardados</button>
       <button class="btn btn-light btn-sm" id="acc-regen" ${acctBusy ? 'disabled' : ''}>${acctBusy === 'regen' ? `${I.loader.replace('<svg', '<svg class="spin"')} Releyendo la cuenta…` : `${I.refresh} Releer y regenerar diagnóstico (no gasta el gratis)`}</button>
     </div>
     ${acctMsg ? `<div class="small" role="status">${esc(acctMsg)}</div>` : ''}
@@ -301,6 +302,7 @@ function accountCard() {
     </div>
     ${a.revenue.cancelled30 != null ? `<div class="small">Últimos 30 días: ${a.revenue.orders30} ventas cobradas${a.revenue.cancelled30 ? ` + ${a.revenue.cancelled30} cancelada(s) por ${fmtMoney(a.revenue.cancelled30_amount)} (Mercado Libre las suma en "ventas brutas"; Rinde no las cuenta como facturación)` : ' · sin canceladas'}.${a.revenue.statuses30 ? ` Estados: ${Object.entries(a.revenue.statuses30).map(([k, v]) => `${esc(k)} ${v}`).join(', ')}.` : ''}</div>` : '<div class="small muted">Para ver canceladas y meses, tocá "Releer y regenerar".</div>'}
     ${a.revenue.months ? `<div class="table-wrap"><table class="data"><thead><tr><th>Mes (hora AR)</th><th>Ventas cobradas</th><th>Facturación</th><th>Canceladas</th></tr></thead><tbody>${Object.entries(a.revenue.months).sort((x, y) => y[0].localeCompare(x[0])).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="num">${v.orders}</td><td class="num">${fmtMoney(v.amount)}</td><td class="num">${v.cancelled ? `${v.cancelled} · ${fmtMoney(v.cancelled_amount)}` : '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${a.counts ? `<div class="small">Tarjetas: ${Object.entries(a.counts).filter(([, v]) => v).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')} · total ${Object.values(a.counts).reduce((x, y) => x + y, 0)}</div>` : ''}
     <div class="small muted">Titular: ${esc(a.headline)} · Abandonadas: ${a.abandoned}${a.problems.length ? ` · ${a.problems.map((p) => `${esc(p.label)}: ${esc(p.detail)}`).join(' · ')}` : ''}</div>` : a && !a.ready ? '<div class="small muted">La cuenta todavía se está leyendo. Probá "Releer y regenerar".</div>' : ''}
   </section>`;
 }
@@ -316,6 +318,19 @@ async function loadAccount() {
   }
   acctBusy = 'load'; acctMsg = ''; render();
   try { acct = await call('GET', null, `?view=account&user_id=${encodeURIComponent(selUser)}`); } catch (e) { acctMsg = e.message; }
+  acctBusy = ''; render();
+}
+
+async function regenStored() {
+  if (DEMO) { acctMsg = 'En el modo ejemplo no hay cuenta real.'; return render(); }
+  acctBusy = 'stored'; acctMsg = 'Regenerando con los datos guardados (no lee Mercado Libre)…'; render();
+  try {
+    const d = await call('POST', { action: 'resync', user_id: selUser, stored: true });
+    acctMsg = d.done ? `Listo. Titular: ${d.headline}` : 'No se pudo regenerar.';
+    await loadAccount();
+    acctMsg = d.done ? `Listo. Titular: ${d.headline}` : acctMsg;
+    return render();
+  } catch (e) { acctMsg = e.message; }
   acctBusy = ''; render();
 }
 
@@ -377,6 +392,7 @@ function validationView() {
   document.getElementById('vrun')?.addEventListener('click', runValidation);
   document.getElementById('acc-load')?.addEventListener('click', loadAccount);
   document.getElementById('acc-regen')?.addEventListener('click', regenAccount);
+  document.getElementById('acc-stored')?.addEventListener('click', regenStored);
   document.getElementById('vcopy')?.addEventListener('click', async () => {
     const t = document.getElementById('vraw').textContent;
     try { await navigator.clipboard.writeText(t); document.getElementById('vcopy').textContent = 'Copiado'; } catch { const sel = getSelection(); const rg = document.createRange(); rg.selectNodeContents(document.getElementById('vraw')); sel.removeAllRanges(); sel.addRange(rg); }

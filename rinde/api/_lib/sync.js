@@ -221,6 +221,32 @@ export async function step(userId, sellerId) {
   return saveJob(job);
 }
 
+/**
+ * Historial por publicación desde las órdenes guardadas (sin canceladas):
+ * unidades por mes del año (hora AR) y $ vendidos en los 60 días antes de su última venta.
+ */
+export function itemHistories(orders) {
+  const by = {};
+  for (const o of orders) {
+    if (NOT_SOLD.has(o.data?.status)) continue;
+    const t = new Date(o.date_created).getTime();
+    const month = new Date(t - 3 * 3600000).getUTCMonth() + 1;
+    for (const l of o.data?.lines || []) {
+      const h = (by[l.item_id] ||= { months: {}, sales: [], last: 0 });
+      const q = Number(l.qty) || 0;
+      h.months[month] = (h.months[month] || 0) + q;
+      h.sales.push([t, q * (Number(l.unit_price) || 0)]);
+      if (t > h.last) h.last = t;
+    }
+  }
+  const out = {};
+  for (const [id, h] of Object.entries(by)) {
+    const from = h.last - 60 * DAY;
+    out[id] = { months: h.months, last_sale_at: new Date(h.last).toISOString(), rev60: h.sales.filter(([t]) => t >= from).reduce((s, [, v]) => s + v, 0) };
+  }
+  return out;
+}
+
 /** Carga todo lo necesario para armar el modelo de la cuenta. */
 export async function loadAccount(userId) {
   const [user, items, orders, costs, job, plans] = await Promise.all([
@@ -257,7 +283,7 @@ export async function loadAccount(userId) {
     user,
     job,
     data: {
-      items: items.map((r) => r.data),
+      items: (() => { const hist = itemHistories(orders); return items.map((r) => ({ ...r.data, hist: hist[r.data.id] || null })); })(),
       lines,
       costs: costMap,
       settings: { ads_manual_monthly: s.ads_manual_monthly || 0, meta_ads_monthly: s.meta_ads_monthly || 0 },

@@ -1,7 +1,7 @@
 // Arma el "modelo" de la cuenta a partir de los datos crudos.
 // Mismo código para la cuenta real (servidor) y para el demo (navegador).
-import { classify, computeProductProfit, buildRulePlan, lostSalesEstimate, rankProblems, prorate, replacementWarning, buildAlerts } from './rules.js';
-import { CATEGORIES } from './config.js';
+import { classify, computeProductProfit, buildRulePlan, lostSalesEstimate, rankProblems, prorate, replacementWarning, buildAlerts, groupOf, seasonInfo } from './rules.js';
+import { CATEGORIES, GROUPS } from './config.js';
 
 export function costKey(it) {
   return (it.sku && String(it.sku).trim()) || it.id;
@@ -32,12 +32,18 @@ export function buildModel(data) {
     const profit = computeProductProfit(byItem[it.id] || [], cost, ads);
     const cls = classify(it, profit, seller);
     const lost = lostSalesEstimate(it, cls);
-    const plan = plans[it.id] || buildRulePlan(it, cls, profit);
-    return { it, cost, profit, cls, lost, plan, warning: replacementWarning(profit) };
+    const group = groupOf(it, cls);
+    const season = group === 'TEMPORADA' ? seasonInfo(it) : null;
+    // De temporada: el plan de reglas manda (la IA podría decir "reponé stock" de un producto de invierno en noviembre).
+    const plan = season ? buildRulePlan(it, cls, profit) : plans[it.id] || buildRulePlan(it, cls, profit);
+    return { it, cost, profit, cls, lost, plan, group, season, warning: replacementWarning(profit) };
   });
 
   const counts = Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, 0]));
   rows.forEach((r) => counts[r.cls.category]++);
+  // Tarjetas: mismos grupos que la lista, suman el total de publicaciones.
+  const groupCounts = Object.fromEntries(Object.keys(GROUPS).map((k) => [k, 0]));
+  rows.forEach((r) => groupCounts[r.group]++);
 
   const ranked = rankProblems(rows);
   const problems = ranked.problems.slice(0, 3);
@@ -86,7 +92,7 @@ export function buildModel(data) {
     exceedsAvg: revenueReal.monthlyAvg180 != null && lostTotal > revenueReal.monthlyAvg180 + 1,
   };
   const hasAnyCost = rows.some((r) => r.profit.hasCost);
-  return { rows, counts, problems, allProblems: ranked.problems, abandoned: ranked.abandoned, tips: ranked.tips, kpis, alerts, lostTotal, revenue: revenueReal, sanity, hasAnyCost, seller };
+  return { rows, counts, groupCounts, problems, allProblems: ranked.problems, abandoned: ranked.abandoned, seasonal: ranked.seasonal, tips: ranked.tips, kpis, alerts, lostTotal, revenue: revenueReal, sanity, hasAnyCost, seller };
 }
 
 import { fmtMoney } from './rules.js';
@@ -114,7 +120,7 @@ const FIX_HINT = {
   conversion_general: 'Mejorá foto principal y descripción.',
 };
 
-export const LOST_EXPLAIN = 'Es una estimación, no plata que perdiste. Sale solo de tus ventas reales de los últimos 6 meses. Contamos únicamente las publicaciones que hoy no pueden vender (sin stock, pausadas, con infracción o en revisión): para cada una tomamos lo que facturaba por mes en promedio. Cada publicación se cuenta una sola vez. Si una publicación activa vende menos que antes no sumamos plata, porque puede ser temporada. Las que no vendieron nada en 6 meses no suman (las ves aparte como "abandonadas"), y Clásica/cuotas o Full/Flex son solo sugerencias. Por eso este número nunca puede ser mayor a lo que vendías en promedio por mes en los últimos 6 meses.';
+export const LOST_EXPLAIN = 'Es una estimación, no plata que perdiste. Sale solo de tus ventas reales. Contamos únicamente las publicaciones que hoy no pueden vender (sin stock, pausadas, con infracción o en revisión): para cada una tomamos lo que vendía por mes en los 60 días antes de su última venta, es decir, justo antes de quedarse sin stock o pausarse. Cada publicación se cuenta una sola vez. No suman: los productos de temporada fuera de su época (por ejemplo, de invierno en noviembre), las que no vendieron nada en 6 meses ("abandonadas") y las activas que venden menos que antes. Clásica/cuotas y Full/Flex son solo sugerencias. Este número nunca puede ser mayor a lo que vendías en promedio por mes en los últimos 6 meses.';
 
 const itemsLine = (top, more) => top.map((t) => ({ title: t.title, sold: t.sold, permalink: t.permalink, id: t.id })).concat(more ? [{ more }] : []);
 
@@ -137,6 +143,12 @@ export function buildRuleSummary(model) {
       items: x.items,
       top: itemsLine(x.top || [], x.more),
     })),
+    seasonal: model.seasonal?.count ? {
+      label: 'De temporada: no las cuentes ahora',
+      detail: `${model.seasonal.count} publicación(es) que se venden en otra época del año (por el título o porque casi todas sus ventas fueron en esa temporada). No suman al estimado.`,
+      fix: 'No repongas ahora: preparalas un mes antes de su temporada.',
+      top: itemsLine(model.seasonal.top, model.seasonal.more),
+    } : null,
     abandoned: model.abandoned?.count ? {
       label: 'Publicaciones abandonadas',
       detail: `${model.abandoned.count} publicación(es) sin ninguna venta en los últimos 6 meses. No suman al estimado.`,

@@ -26,7 +26,7 @@ export default handler(async (req, res) => {
     const fixFor = (label) => { const f = (stored?.problems || []).find((x) => x.label === label)?.fix; return f && !claimsFakeLoss(f) ? f : null; };
     const sameTop = stored?.problems?.[0]?.label && stored.problems[0].label === rule.problems[0]?.label;
     const summary = stored
-      ? { ...stored, headline: rule.headline, revenueNote: rule.revenueNote, explain: rule.explain, abandoned: rule.abandoned, tips: rule.tips, problems: rule.problems.map((p) => ({ ...p, fix: fixFor(p.label) || p.fix })), first: sameTop && stored.first && !claimsFakeLoss(stored.first) ? stored.first : rule.first }
+      ? { ...stored, headline: rule.headline, revenueNote: rule.revenueNote, explain: rule.explain, abandoned: rule.abandoned, seasonal: rule.seasonal, tips: rule.tips, problems: rule.problems.map((p) => ({ ...p, fix: fixFor(p.label) || p.fix })), first: sameTop && stored.first && !claimsFakeLoss(stored.first) ? stored.first : rule.first }
       : rule;
     for (const r of model.rows) if (r.plan?.source === 'ia' && claimsFakeLoss(r.plan.headline, r.profit)) r.plan = { ...r.plan, headline: buildRulePlanHeadline(r) };
     const sales90 = model.rows.reduce((t, r) => t + (r.it.sales90 || 0), 0);
@@ -80,10 +80,10 @@ export default handler(async (req, res) => {
   // Resumen de la cuenta (caché por hash de los datos)
   const full = buildModel(data);
   const rule = buildRuleSummary(full);
-  const hash = sha256(JSON.stringify([full.counts, full.problems.map((p) => [p.code, Math.round(p.impact)])])).slice(0, 32);
+  const hash = sha256(JSON.stringify([full.groupCounts, full.problems.map((p) => [p.code, Math.round(p.impact)])])).slice(0, 32);
   const prev = await db.one('rinde_diagnoses', { user_id: u.id, input_hash: hash }, { order: 'created_at.desc' });
   const summary = prev?.summary || (await generateSummary(full, rule)) || rule;
-  await db.insert('rinde_diagnoses', [{ user_id: u.id, input_hash: hash, summary, tokens_used: (job.meta?.ai_tokens || 0) + (summary.tokens || 0), sync_finished_at: job.finished_at, counts: full.counts }]);
+  await db.insert('rinde_diagnoses', [{ user_id: u.id, input_hash: hash, summary, tokens_used: (job.meta?.ai_tokens || 0) + (summary.tokens || 0), sync_finished_at: job.finished_at, counts: full.groupCounts }]);
   if (!u.free_diagnosis_used_at) await db.update('rinde_users', { id: u.id }, { free_diagnosis_used_at: new Date().toISOString() });
   json(res, 200, { done: true, remaining: 0 });
 });

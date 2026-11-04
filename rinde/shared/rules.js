@@ -2,7 +2,7 @@
 // Código compartido entre el servidor y el navegador (modo demo).
 // Regla de oro: si un dato no está, se informa "sin dato". Nunca se inventa.
 
-import { THRESHOLDS as T, CATEGORIES } from './config.js';
+import { THRESHOLDS as T, CATEGORIES, SEASONS } from './config.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n) ? 'sin dato' : (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString('es-AR'));
 const pct = (n) => (n == null || Number.isNaN(n) ? 'sin dato' : (n * 100).toFixed(1).replace('.', ',') + ' %');
@@ -120,13 +120,68 @@ export function itemHistory(it) {
   const units180 = it.sales180 ?? it.sales90 ?? 0;
   const revenue180 = it.revenue180 ?? units180 * (it.price || 0);
   const avgPrice = units180 > 0 ? revenue180 / units180 : it.price || 0;
+  const h = it.hist; // ventas por mes y últimos 60 días antes de la última venta (se arma con las órdenes guardadas)
   return {
     units180,
     revenue180,
     monthlyRevenue: revenue180 / 6, // promedio mensual de los últimos 6 meses
+    // Lo que vendía por mes en los 60 días antes de quedarse sin stock / pausarse (= antes de su última venta).
+    monthlyRecent: h?.rev60 != null ? h.rev60 / 2 : revenue180 / 6,
     revenue30: (it.sales30 || 0) * avgPrice,
     abandoned: units180 === 0, // nunca vendió o no vende hace más de 180 días
   };
+}
+
+/** Días de cada mes (1-12) dentro de los últimos 180 días, en hora argentina. */
+export function windowDays(now = new Date()) {
+  const out = {};
+  for (let d = 0; d < 180; d++) { const m = monthAR(new Date(now.getTime() - d * 86400000)); out[m] = (out[m] || 0) + 1; }
+  return out;
+}
+
+/** Mes actual en Argentina (1-12). */
+export const monthAR = (d = new Date()) => new Date(d.getTime() - 3 * 3600000).getUTCMonth() + 1;
+
+/**
+ * ¿Es un producto de temporada fuera de su época? (hemisferio sur)
+ * Por el título (invierno/verano y palabras típicas) o porque ≥70 % de sus ventas cayó en los meses de esa temporada.
+ * @returns null o { season, reason }
+ */
+export function seasonInfo(it, now = new Date()) {
+  const m = monthAR(now);
+  const months = it.hist?.months || null; // { '1': u, ..., '12': u }
+  const total = months ? Object.values(months).reduce((a, b) => a + b, 0) : 0;
+  for (const [season, cfg] of Object.entries(SEASONS)) {
+    const inSeason = cfg.months.includes(m) || cfg.pre.includes(m);
+    if (inSeason) continue;
+    if (cfg.words.test(it.title || '')) return { season, reason: 'título' };
+    if (total >= 3) {
+      // Ventas POR DÍA dentro vs fuera de la temporada, dentro de la ventana de 180 días (así no pesa
+      // que la ventana tenga más meses de una estación). De temporada si vende 3 veces más en su época.
+      const days = windowDays(now);
+      const dIn = cfg.months.reduce((a, k) => a + (days[k] || 0), 0);
+      const dOut = 180 - dIn;
+      const uIn = cfg.months.reduce((a, k) => a + (months[k] || 0), 0);
+      if (dIn >= 20 && dOut >= 20) {
+        const rIn = uIn / dIn, rOut = (total - uIn) / dOut;
+        if (rIn >= 3 * rOut) return { season, reason: 'ventas', ratio: rOut ? rIn / rOut : null };
+      }
+    }
+  }
+  return null;
+}
+
+/** Grupo que ve el usuario (tarjetas y lista). Cada publicación cae en uno solo. */
+export function groupOf(it, cls, now = new Date()) {
+  if (cls.category === 'SANA') return 'SANA';
+  if (cls.category === 'PIERDE_PLATA') return 'PIERDE_PLATA';
+  if (itemHistory(it).abandoned) return 'ABANDONADAS';
+  if (seasonInfo(it, now)) return 'TEMPORADA';
+  if (cls.category === 'OPERATIVO') {
+    const code = primaryReason(cls);
+    return code === 'sin_stock' ? 'SIN_STOCK' : code === 'pausada' ? 'PAUSADAS' : 'BLOQUEADAS';
+  }
+  return cls.category === 'SIN_VENTAS' ? 'SIN_VENTAS' : 'POCA_VISIBILIDAD';
 }
 
 // Motivos que son recomendación, no plata en juego.
@@ -147,10 +202,10 @@ export function primaryReason(cls) {
  * Si no vendió nada en 180 días aporta $0 (va a "Publicaciones abandonadas").
  * Por construcción, la suma nunca supera el promedio mensual facturado de la cuenta en los últimos 6 meses.
  */
-export function lostSalesEstimate(it, cls) {
+export function lostSalesEstimate(it, cls, now = new Date()) {
   const h = itemHistory(it);
-  if (h.abandoned) return 0;
-  return cls.category === 'OPERATIVO' ? h.monthlyRevenue : 0;
+  if (h.abandoned || seasonInfo(it, now)) return 0; // de temporada fuera de época: no se cuenta ahora
+  return cls.category === 'OPERATIVO' ? h.monthlyRecent : 0;
 }
 
 const PROBLEM_LABELS = {
@@ -182,7 +237,7 @@ const TOP_N = 10;
 const topItems = (list) => [...list]
   .sort((a, b) => itemHistory(b.it).units180 - itemHistory(a.it).units180 || itemHistory(b.it).revenue180 - itemHistory(a.it).revenue180)
   .slice(0, TOP_N)
-  .map((r) => ({ id: r.it.id, title: r.it.title, sold: itemHistory(r.it).units180, permalink: r.it.permalink || null }));
+  .map((r) => ({ id: r.it.id, title: r.it.title, sold: itemHistory(r.it).units180, permalink: r.it.permalink || null, season: r.season?.season || null }));
 
 /**
  * Ranking de problemas: cada publicación entra UNA sola vez, en su problema principal, con su propio estimado.
@@ -193,6 +248,7 @@ export function rankProblems(rows) {
   const abandoned = [];
   const fullFlex = [];
   const classic = [];
+  const seasonal = [];
   for (const r of rows) {
     if ((r.cls.reasons || []).some((x) => x.code === 'sin_full_flex')) fullFlex.push(r);
     if ((r.cls.reasons || []).some((x) => x.code === 'publicacion_clasica' || x.code === 'sin_cuotas')) classic.push(r);
@@ -200,6 +256,7 @@ export function rankProblems(rows) {
     const loss = r.profit?.net < 0 ? -r.profit.net : 0;
     if (!code) continue;
     if (itemHistory(r.it).abandoned && !loss) { abandoned.push(r); continue; }
+    if (r.group === 'TEMPORADA') { seasonal.push(r); continue; }
     const a = (agg[code] ||= { code, label: PROBLEM_LABELS[code] || code, rows: [], impact: 0 });
     a.rows.push(r);
     a.impact += (r.lost || 0) + loss;
@@ -209,6 +266,7 @@ export function rankProblems(rows) {
     .sort((a, b) => b.impact - a.impact || b.items.length - a.items.length);
   return {
     problems,
+    seasonal: { count: seasonal.length, items: seasonal.map((r) => r.it.id), top: topItems(seasonal), more: Math.max(0, seasonal.length - TOP_N) },
     abandoned: { count: abandoned.length, items: abandoned.map((r) => r.it.id), top: abandoned.slice(0, TOP_N).map((r) => ({ id: r.it.id, title: r.it.title, sold: 0, permalink: r.it.permalink || null })), more: Math.max(0, abandoned.length - TOP_N) },
     tips: [
       ...(classic.length ? [{ code: 'publicacion_clasica', label: PROBLEM_LABELS.publicacion_clasica, count: classic.length }] : []),
@@ -246,6 +304,18 @@ const ACTIONS = {
 };
 
 export function buildRulePlan(it, cls, profit) {
+  const season = cls.category !== 'SANA' && cls.category !== 'PIERDE_PLATA' ? seasonInfo(it) : null;
+  if (season) {
+    return {
+      verdict: 'temporada',
+      headline: `De temporada (${season.season}): no la cuentes ahora.`,
+      actions: [
+        { title: 'No repongas ahora', detail: `Se vende en ${season.season}. Reponer fuera de temporada inmoviliza plata.`, impact: 'alto' },
+        { title: `Preparala para el próximo ${season.season}`, detail: 'Un mes antes de la temporada: cargá stock, revisá precio y fotos, y reactivala.', impact: 'medio' },
+      ],
+      source: 'reglas',
+    };
+  }
   if (cls.noDemand) {
     return {
       verdict: 'liquidar',

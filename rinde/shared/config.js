@@ -63,6 +63,26 @@ export const CATEGORIES = {
     desc: 'Vende bien y deja margen.' },
 };
 
+// Grupos que ve el usuario (tarjetas y lista): cada publicación está en UNO solo y suman el total.
+export const GROUPS = {
+  SIN_STOCK: { key: 'SIN_STOCK', label: 'Sin stock', short: 'Sin stock', tone: 'bad', icon: 'alert', order: 1, desc: 'Vendían y hoy no tienen stock.' },
+  PAUSADAS: { key: 'PAUSADAS', label: 'Pausadas', short: 'Pausadas', tone: 'bad', icon: 'alert', order: 2, desc: 'Vendían y hoy están pausadas.' },
+  BLOQUEADAS: { key: 'BLOQUEADAS', label: 'Con infracción o en revisión', short: 'Infracción', tone: 'bad', icon: 'alert', order: 3, desc: 'Mercado Libre las frenó.', hideEmpty: true },
+  PIERDE_PLATA: { key: 'PIERDE_PLATA', label: 'Vende pero pierde plata', short: 'Pierde plata', tone: 'bad', icon: 'down', order: 4, desc: 'Vende, pero después de costos y cargos no te deja ganancia.' },
+  POCA_VISIBILIDAD: { key: 'POCA_VISIBILIDAD', label: 'Poca visibilidad', short: 'Poca visibilidad', tone: 'warn', icon: 'eyeoff', order: 5, desc: 'Vendían, hoy casi nadie las ve.' },
+  SIN_VENTAS: { key: 'SIN_VENTAS', label: 'Visitas sin ventas', short: 'Visitas sin ventas', tone: 'warn', icon: 'cart', order: 6, desc: 'La ven pero no la compran.', hideEmpty: true },
+  TEMPORADA: { key: 'TEMPORADA', label: 'De temporada', short: 'De temporada', tone: 'neutral', icon: 'info', order: 7, desc: 'Se venden en otra época del año: no las contamos ahora.', hideEmpty: true },
+  ABANDONADAS: { key: 'ABANDONADAS', label: 'Abandonadas', short: 'Abandonadas', tone: 'neutral', icon: 'x', order: 8, desc: 'Sin ninguna venta en 6 meses.' },
+  SANA: { key: 'SANA', label: 'Sanas', short: 'Sanas', tone: 'ok', icon: 'check', order: 9, desc: 'Venden y no tienen problemas.' },
+};
+
+// Temporada (hemisferio sur). Meses 1-12. Una publicación es "de temporada" fuera de su época si el título lo dice
+// o si al menos el 70 % de sus ventas de 6 meses cayó en esos meses. El mes previo cuenta como temporada (se repone antes).
+export const SEASONS = {
+  invierno: { months: [5, 6, 7, 8], pre: [4], words: /invierno|polar|kigurumi|frazada|estufa|calefactor|bufanda|chiporro|corderito|abrigo|campera|guantes t[eé]rmicos|pantuflas/i },
+  verano: { months: [11, 12, 1, 2], pre: [10], words: /verano|pileta|piscina|inflable|malla|bikini|protector solar|pistola de agua|ventilador|sombrilla|reposera|ojotas/i },
+};
+
 export const PLAN_PRICE_ARS = 15000;
 export const WHATSAPP_NUMBER = '5491160374306';
 

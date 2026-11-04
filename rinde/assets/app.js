@@ -1,13 +1,13 @@
 // Rinde — app (diagnóstico, rentabilidad, alertas). Funciona en modo real (/app) y DEMO (/demo).
 import { I, hydrateIcons } from './icons.js';
-import { CATEGORIES, THRESHOLDS, waLink, PLAN_PRICE_ARS } from '../shared/config.js';
+import { CATEGORIES, GROUPS, THRESHOLDS, waLink, PLAN_PRICE_ARS } from '../shared/config.js';
 import { fmtMoney, fmtPct, conversion, LISTING_LABEL, ALERT_LABELS, competitorRef, priceGap } from '../shared/rules.js';
 import { buildModel, buildRuleSummary, costKey } from '../shared/model.js';
 
 const DEMO = location.pathname.startsWith('/demo') || new URLSearchParams(location.search).has('demo');
 const $app = document.getElementById('app');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const TONE_TAG = { bad: 'tag-bad', warn: 'tag-warn', ok: 'tag-ok' };
+const TONE_TAG = { bad: 'tag-bad', warn: 'tag-warn', ok: 'tag-ok', neutral: 'tag-neutral' };
 
 const S = {
   demoData: null, // datos crudos del demo (editables en memoria)
@@ -54,7 +54,7 @@ function toast(msg) {
 
 // ─────────────────────────────── Helpers UI ────────────────────────────────
 function catTag(key) {
-  const c = CATEGORIES[key];
+  const c = GROUPS[key] || CATEGORIES[key];
   return `<span class="tag ${TONE_TAG[c.tone]}">${I[c.icon]} ${esc(c.label)}</span>`;
 }
 const shipLabel = (it) => (it.shipping?.logistic === 'fulfillment' ? 'Full' : it.shipping?.flex ? 'Flex' : 'Normal');
@@ -153,7 +153,7 @@ function render() {
 
 // ─────────────────────────────── Diagnóstico ───────────────────────────────
 function sortedRows() {
-  return [...S.model.rows].sort((a, b) => CATEGORIES[a.cls.category].order - CATEGORIES[b.cls.category].order || (b.lost + Math.max(0, -(b.profit.net || 0))) - (a.lost + Math.max(0, -(a.profit.net || 0))));
+  return [...S.model.rows].sort((a, b) => GROUPS[a.group].order - GROUPS[b.group].order || (b.lost + Math.max(0, -(b.profit.net || 0))) - (a.lost + Math.max(0, -(a.profit.net || 0))));
 }
 
 function diagnosisView() {
@@ -162,12 +162,15 @@ function diagnosisView() {
   const canRegen = DEMO || S.paid || S.user?.can_regenerate;
   const total = m.rows.length;
   const noCosts = m.hasAnyCost === false;
-  const tiles = Object.values(CATEGORIES).map((c) => (c.key === 'PIERDE_PLATA' && noCosts)
+  // Tarjetas = los mismos grupos que la lista; cada publicación en uno solo, suman el total.
+  const gc = m.groupCounts;
+  const shown = Object.values(GROUPS).filter((c) => !(c.hideEmpty && !gc[c.key]));
+  const tiles = shown.map((c) => (c.key === 'PIERDE_PLATA' && noCosts)
     ? `<a class="cat-tile ${c.tone} is-pending" href="#/rentabilidad" aria-label="Pierde plata: cargá tus costos para calcularlo"><span class="n n-text">Cargá tus costos para calcularlo</span><span class="l">${I[c.icon]} ${esc(c.short)}</span></a>`
-    : `<button class="cat-tile ${c.tone}" data-filter="${c.key}" aria-label="Filtrar ${esc(c.label)}: ${m.counts[c.key]}"><span class="n">${m.counts[c.key]}</span><span class="l">${I[c.icon]} ${esc(c.short)}</span></button>`).join('');
-  const chips = [['TODAS', 'Todas', total, 'search'], ...Object.values(CATEGORIES).map((c) => [c.key, c.short, m.counts[c.key], c.icon])]
+    : `<button class="cat-tile ${c.tone}" data-filter="${c.key}" aria-label="Filtrar ${esc(c.label)}: ${gc[c.key]}"><span class="n">${gc[c.key]}</span><span class="l">${I[c.icon]} ${esc(c.short)}</span></button>`).join('');
+  const chips = [['TODAS', 'Todas', total, 'search'], ...shown.filter((c) => !(c.key === 'PIERDE_PLATA' && noCosts)).map((c) => [c.key, c.short, gc[c.key], c.icon])]
     .map(([k, l, n, ic]) => `<button class="chip" data-filter="${k}" aria-pressed="${S.filter === k}">${I[ic]} ${esc(l)} <span class="count">${n}</span></button>`).join('');
-  const rows = sortedRows().filter((r) => S.filter === 'TODAS' || r.cls.category === S.filter);
+  const rows = sortedRows().filter((r) => S.filter === 'TODAS' || r.group === S.filter);
 
   return `
   <div class="page-head">
@@ -183,6 +186,7 @@ function diagnosisView() {
       <h2 id="sum-h">${esc(sum.headline)}</h2>
       ${sum.revenueNote ? `<div class="rev-note">${esc(sum.revenueNote)}</div>` : ''}
       <div class="problems">${(sum.problems || []).map((p) => problemBlock(p)).join('') || '<div class="problem"><b>Sin problemas graves</b><span>Tu cuenta está sana.</span></div>'}</div>
+      ${sum.seasonal ? `<div class="problems problems-extra">${problemBlock(sum.seasonal, 'De temporada')}</div>` : ''}
       ${sum.abandoned ? `<div class="problems problems-extra">${problemBlock(sum.abandoned, 'Abandonadas')}</div>` : ''}
       ${(sum.tips || []).length ? sum.tips.map((t) => `<p class="tip-line">${I.info} ${esc(t.detail)}</p>`).join('') : ''}
       ${sum.first ? `<div class="first">${I.arrow}<div><b>Qué arreglar primero:</b> ${esc(sum.first)}</div></div>` : ''}
@@ -218,9 +222,9 @@ function itemCard(r) {
   const ref = competitorRef(it);
   const gap = priceGap(it);
   const reasons = (cls.reasons || []).filter((x) => x.text);
-  return `<details class="item tone-${CATEGORIES[cls.category].tone}" id="it-${esc(it.id)}">
+  return `<details class="item tone-${GROUPS[r.group].tone}" id="it-${esc(it.id)}">
     <summary>
-      <div class="i-top"><div class="i-title">${esc(it.title)}</div>${catTag(cls.category)}</div>
+      <div class="i-top"><div class="i-title">${esc(it.title)}</div>${catTag(r.group)}</div>
       <div class="i-meta"><span>Precio <b>${fmtMoney(it.price)}</b></span><span>Visitas 30 d <b>${sd(it.visits30, (v) => v.toLocaleString('es-AR'))}</b></span><span>Ventas 30 d <b>${it.sales30 ?? 0}</b></span><span>Conversión <b>${conv == null ? 'sin dato' : fmtPct(conv)}</b></span></div>
       <div class="i-head">${plan.verdict === 'liquidar' ? `<span class="tag tag-bad">${I.x} Sin salida</span> ` : ''}${esc(plan.headline)}</div>
       <span class="i-more">Ver plan de acción ${I.chevron}</span>

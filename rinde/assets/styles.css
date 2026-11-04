@@ -409,3 +409,5 @@ a.chip { text-decoration: none; }
 
 .data tr.row-bad td { background: color-mix(in srgb, var(--bad) 9%, transparent); }
 .data tr.row-bad td.prod b { color: var(--bad); }
+.cat-tile.neutral { border-left-color: var(--line-strong); } .cat-tile.neutral .l { color: var(--muted); }
+.item.tone-neutral { border-left-color: var(--line-strong); }
