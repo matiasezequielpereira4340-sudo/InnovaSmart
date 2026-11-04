@@ -123,6 +123,16 @@ function currentRoute() {
   return ['diagnostico', 'publicaciones', 'rentabilidad', 'alertas', 'conectando'].includes(r) ? r : 'diagnostico';
 }
 
+function connectionBanner() {
+  const c = S.user?.connection;
+  if (DEMO || !c?.connected || c.renewable) return '';
+  const h = c.hours_left;
+  const when = h < 1 ? 'en menos de una hora' : `en ${Math.round(h)} hora${Math.round(h) === 1 ? '' : 's'}`;
+  return c.expired
+    ? `<div class="wrap" style="padding-top:14px"><div class="notice notice-bad" role="alert">${I.alert}<div><b>Tu conexión con Mercado Libre venció.</b> Rinde no puede leer tu cuenta (ni mandarte alertas) hasta que vuelvas a conectar. Tus datos siguen guardados. <a href="/api/auth/login?next=/app">Volver a conectar</a></div></div></div>`
+    : `<div class="wrap" style="padding-top:14px"><div class="notice notice-warn">${I.info}<div><b>Tu conexión vence ${when}, volvé a conectar</b> para que Rinde pueda seguir leyendo tu cuenta y mandarte alertas. <a href="/api/auth/login?next=/app">Volver a conectar</a></div></div></div>`;
+}
+
 function billingBanner() {
   const b = S.user?.billing;
   if (DEMO || !b?.status) return '';
@@ -146,7 +156,7 @@ function render() {
   else if (route === 'publicaciones') body = listingsView();
   else if (route === 'alertas') body = alertsView();
   else body = diagnosisView();
-  $app.innerHTML = header() + billingBanner() + `<main class="wrap${route === 'rentabilidad' ? ' wide' : ''}">${body}</main>
+  $app.innerHTML = header() + connectionBanner() + billingBanner() + `<main class="wrap${route === 'rentabilidad' ? ' wide' : ''}">${body}</main>
   <footer class="footer"><div class="wrap"><span>Rinde · un servicio de Innovasmart · solo lectura: nunca modificamos tu cuenta.</span><span><a href="/privacidad">Privacidad</a> · <a href="/terminos">Términos</a></span></div></footer>`;
   hydrateIcons($app);
   bind(route);

@@ -52,7 +52,7 @@ export default handler(async (req, res) => {
       if (!user.alert_email && me.email) await db.update('rinde_users', { id: user.id }, { alert_email: me.email });
       await saveTokens(user.id, tokens);
       setSession(res, user.id);
-      await audit(req, { event: 'login', user });
+      await audit(req, { event: 'login', user, reason: tokens.refresh_token ? null : 'sin_refresh_token', detail: { scope: tokens.scope || null, refresh_token: !!tokens.refresh_token } });
       return redirect(res, safeNext(nextPath) || '/app#/conectando');
     } catch (e) {
       const reason = e.reason || (e.code === 'db' ? 'base_de_datos' : e.name === 'MeliError' ? `meli_${e.meliStatus || e.status}` : 'interno');

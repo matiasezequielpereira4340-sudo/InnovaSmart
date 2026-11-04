@@ -12,12 +12,16 @@ import { AppError } from './http.js';
 const KEY = (userId) => `public_refresh:${userId}`;
 const BATCH = 20;
 
-async function pickDonor(targetId) {
-  const conns = await db.select('rinde_connections', {}, { columns: 'user_id,updated_at', order: 'updated_at.desc', limit: 20 });
-  const c = conns.find((x) => x.user_id !== targetId);
-  if (!c) throw new AppError(409, 'No hay otra cuenta conectada en la app para leer los datos públicos.');
-  const u = await db.one('rinde_users', { id: c.user_id }, { columns: 'id,nickname,meli_user_id' });
-  return u;
+async function pickDonor(targetId, preferId = null) {
+  // Cualquier conexión de la app con token vigente (o renovable). Primero la que ya se venía usando.
+  const conns = await db.select('rinde_connections', {}, { columns: 'user_id,updated_at,expires_at,refresh_token_enc', order: 'updated_at.desc', limit: 50 });
+  const usable = conns.filter((x) => meli.connectionUsable(x, 2 * 60000));
+  const c = usable.find((x) => x.user_id === preferId) || usable.find((x) => x.user_id !== targetId) || usable[0];
+  if (!c) {
+    const soon = conns.map((x) => x.expires_at).sort().pop();
+    throw new AppError(409, `No hay ninguna cuenta con conexión vigente en la app para leer los datos públicos${soon ? ` (la última venció el ${new Date(soon).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })})` : ''}. Conectá cualquier cuenta de Mercado Libre (por ejemplo la tuya) y volvé a tocar el botón.`, 'no_donor');
+  }
+  return db.one('rinde_users', { id: c.user_id }, { columns: 'id,nickname,meli_user_id' });
 }
 
 /**
@@ -34,6 +38,12 @@ export async function publicRefreshStep(targetId, { start = false, req = null, b
     st = { ids: items.map((r) => r.item_id), cursor: 0, done: false, donor_id: donor.id, donor_nickname: donor.nickname, started_at: new Date().toISOString(), with_attrs: 0 };
     await audit(req, { event: 'public_refresh', user: target, reason: `inicio · token de ${donor.nickname}`,
       detail: { donor_user_id: donor.id, donor_nickname: donor.nickname, endpoints: ['/items?ids=', '/items/{id}/description', '/categories/{id}', '/categories/{id}/attributes'], items: st.ids.length } });
+  }
+  // Si la cuenta que prestaba el token venció, se cambia por otra vigente (queda registrado).
+  const donorNow = await pickDonor(targetId, st.donor_id);
+  if (donorNow.id !== st.donor_id) {
+    await audit(req, { event: 'public_refresh', user: target, reason: `cambio de token: ${st.donor_nickname} → ${donorNow.nickname}`, detail: { from: st.donor_id, to: donorNow.id } });
+    Object.assign(st, { donor_id: donorNow.id, donor_nickname: donorNow.nickname });
   }
   const token = await meli.getAccessToken(st.donor_id);
 

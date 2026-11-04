@@ -70,6 +70,24 @@ export async function saveTokens(userId, t) {
   }], 'user_id');
 }
 
+/** true si con esta conexión se puede leer ahora o más adelante (refresh token, o token vigente). */
+export function connectionUsable(c, marginMs = 5 * 60000) {
+  return !!c && (!!c.refresh_token_enc || new Date(c.expires_at).getTime() - Date.now() > marginMs);
+}
+
+/** Estado de la conexión para mostrarle al usuario. */
+export function connectionStatus(c) {
+  if (!c) return { connected: false };
+  const msLeft = new Date(c.expires_at).getTime() - Date.now();
+  return {
+    connected: true,
+    renewable: !!c.refresh_token_enc, // sin refresh token MeLi no deja renovar: vence a las ~6 h
+    expires_at: c.expires_at,
+    hours_left: Math.max(0, Math.round((msLeft / 3600000) * 10) / 10),
+    expired: msLeft <= 0,
+  };
+}
+
 /** Devuelve un access token válido; si vence en menos de 5 minutos, lo renueva. */
 // Un error de token NUNCA borra nada: marca la cuenta "hay que reconectar", lo registra y avisa con 401.
 export async function getAccessToken(userId, req = null) {

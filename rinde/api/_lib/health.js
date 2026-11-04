@@ -70,7 +70,12 @@ async function checkMeli() {
   let perf = null;
   try { perf = (await db.one('rinde_settings', { key: 'last_perf_probe' }))?.value || null; } catch {}
   const perfTxt = perf ? ` Calidad de publicaciones (última sincronización): ${Object.entries(perf.counts || {}).map(([k, v]) => `${k}=${v}`).join(', ') || 'sin datos'}${perf.sample ? ` · ejemplo: ${JSON.stringify(perf.sample).slice(0, 300)}` : ''}.` : '';
-  if (r.ok) return { ok: true, detail: 'App ID y Clave secreta correctos.' + lastTxt + perfTxt };
+  let conns = [];
+  try { conns = await db.select('rinde_connections', {}, { columns: 'refresh_token_enc,scope' }); } catch {}
+  const noRefresh = conns.filter((c) => !c.refresh_token_enc).length;
+  const refreshTxt = conns.length ? ` Conexiones: ${conns.length - noRefresh} renovables, ${noRefresh} sin refresh token${noRefresh ? ' (MeLi no está dando refresh token: activá "offline_access" en la app de Mercado Libre y que los usuarios vuelvan a conectar)' : ''}.` : '';
+  if (r.ok && noRefresh) return { ok: false, detail: 'App ID y Clave secreta correctos.' + refreshTxt + lastTxt + perfTxt };
+  if (r.ok) return { ok: true, detail: 'App ID y Clave secreta correctos.' + refreshTxt + lastTxt + perfTxt };
   const b = await r.json().catch(() => ({}));
   if (b.error === 'invalid_client' || r.status === 401) return { ok: false, detail: 'App ID o Clave secreta incorrectos (Mercado Libre responde invalid_client).' + lastTxt };
   return { ok: false, detail: `Mercado Libre respondió ${r.status}${b.error ? ` (${b.error})` : ''}.` };

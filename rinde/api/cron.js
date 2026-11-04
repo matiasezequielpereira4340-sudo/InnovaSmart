@@ -2,6 +2,7 @@
 // 1) Recalcula cada cuenta paga y manda email SOLO si hay alertas nuevas.
 // 2) Los lunes, además, manda el resumen semanal.
 import { handler, json, appUrl, AppError, query } from './_lib/http.js';
+import { connectionUsable } from './_lib/meli.js';
 import { safeEqual } from './_lib/crypto.js';
 import { db } from './_lib/db.js';
 import { startJob, step, loadAccount } from './_lib/sync.js';
@@ -44,7 +45,10 @@ export default handler(async (req, res) => {
   const nowIso = q.now && process.env.NODE_ENV === 'development' ? new Date(q.now).toISOString() : new Date().toISOString();
   let billing = [];
   try { billing = await billingPass(nowIso); } catch (e) { console.error('[rinde][cron] cobros', e.message); billing = [{ error: e.message }]; }
-  const connected = new Set((await db.select('rinde_connections', {}, { columns: 'user_id' })).map((c) => c.user_id));
+  // Solo conexiones usables: con refresh token, o con el token todavía vigente. Las vencidas sin refresh
+  // token no se intentan (quedan marcadas "hay que reconectar" y la app se lo avisa al usuario).
+  const conns = await db.select('rinde_connections', {}, { columns: 'user_id,expires_at,refresh_token_enc' });
+  const connected = new Set(conns.filter((c) => connectionUsable(c, 15 * 60000)).map((c) => c.user_id));
   // Solo cuentas con Mercado Libre conectado (quien desconectó conserva sus datos, pero no se sincroniza).
   const users = (await db.select('rinde_users', { plan: 'rinde' }, { order: 'last_cron_at.asc.nullsfirst', limit: 200 })).filter((u) => connected.has(u.id));
   const report = [];
