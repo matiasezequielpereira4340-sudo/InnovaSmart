@@ -11,6 +11,7 @@ import { runHealth } from './_lib/health.js';
 import { sha256 } from './_lib/crypto.js';
 import { getBillingConfig, saveBillingConfig, activateTransfer } from './_lib/mp.js';
 import { mergeBilling } from '../shared/plans.js';
+import { publicRefreshStep } from './_lib/public-refresh.js';
 
 const yearStartAR = () => new Date(`${new Date(Date.now() - 3 * 3600000).getUTCFullYear()}-01-01T00:00:00-03:00`).toISOString();
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -83,6 +84,30 @@ async function runValidation(user) {
   const raw = scrub({ orders_search: { status: ordersCall.status, body: ordersCall.body }, por_venta: calls });
   const [run] = await db.insert('rinde_validation_runs', [{ user_id: user.id, report, raw }]);
   return { report, raw, id: run?.id, created_at: run?.created_at };
+}
+
+/** Regenera el diagnóstico SOLO con datos guardados (no lee MeLi) y devuelve el resumen con la nota. */
+async function regenStored(user, jobFinished) {
+  const { data } = await loadAccount(user.id);
+  const m = buildModel(data);
+  const summary = { ...buildRuleSummary(m), regenerated_by_admin: true };
+  await db.insert('rinde_diagnoses', [{ user_id: user.id, input_hash: 'admin-' + Date.now(), summary, tokens_used: 0, sync_finished_at: jobFinished, counts: m.groupCounts }]);
+  const scored = m.rows.filter((r) => r.score.score != null);
+  return {
+    headline: summary.headline,
+    counts: m.groupCounts,
+    scores: {
+      avg: m.scores.avg,
+      red: scored.filter((r) => r.score.score < 50).length,
+      yellow: scored.filter((r) => r.score.score >= 50 && r.score.score <= 75).length,
+      green: scored.filter((r) => r.score.score > 75).length,
+      withAttrs: m.rows.filter((r) => r.it.attrs).length,
+      withDesc: m.rows.filter((r) => r.it.desc_len != null).length,
+      total: m.rows.length,
+      worst: m.scores.worst.slice(0, 3).map((id) => { const r = m.rows.find((x) => x.it.id === id); return { title: r.it.title, score: r.score.score, improvements: r.score.improvements.map((x) => x.text), criteria: r.score.criteria.map((c) => `${c.label} ${Math.round(c.value * c.weight)}/${Math.round(c.weight)}`) }; }),
+      histogram: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90].map((b) => ({ from: b, n: scored.filter((r) => r.score.score >= b && r.score.score < b + 10 + (b === 90 ? 1 : 0)).length })),
+    },
+  };
 }
 
 export default handler(async (req, res) => {
@@ -203,6 +228,15 @@ export default handler(async (req, res) => {
       const summary = { ...buildRuleSummary(m), regenerated_by_admin: true };
       await db.insert('rinde_diagnoses', [{ user_id: user.id, input_hash: 'admin-' + Date.now(), summary, tokens_used: 0, sync_finished_at: job.finished_at, counts: m.groupCounts }]);
       return json(res, 200, { done: true, sync: progressOf(job), headline: summary.headline, revenue: m.revenue, lostTotal: m.lostTotal, sanity: m.sanity });
+    }
+    if (body.action === 'public_refresh') {
+      // Cuenta desconectada: relee SOLO datos públicos de sus publicaciones con el token de otra cuenta conectada.
+      const user = await db.one('rinde_users', { id: body.user_id });
+      if (!user) throw new AppError(404, 'No existe ese usuario.');
+      const out = await publicRefreshStep(user.id, { start: !!body.start, req });
+      if (!out.done) return json(res, 200, out);
+      const job = await getJob(user.id);
+      return json(res, 200, { ...out, regen: await regenStored(user, job?.finished_at || null) });
     }
     if (body.action === 'validate') {
       const user = await db.one('rinde_users', { id: body.user_id });

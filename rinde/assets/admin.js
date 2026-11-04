@@ -290,6 +290,7 @@ function accountCard() {
     <h2 id="acc-h" style="font-size:1.15rem;margin:0">Facturación real y diagnóstico de esta cuenta</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-light btn-sm" id="acc-load" ${acctBusy ? 'disabled' : ''}>${I.chart} Ver facturación real</button>
+      ${users.find((u) => u.id === selUser && !u.connected) ? `<button class="btn btn-light btn-sm" id="acc-public" ${acctBusy ? 'disabled' : ''}>${I.refresh} Releer datos públicos de publicaciones (sin reconectar)</button>` : ''}
       <button class="btn btn-light btn-sm" id="acc-stored" ${acctBusy ? 'disabled' : ''}>${I.refresh} Regenerar con datos guardados</button>
       <button class="btn btn-light btn-sm" id="acc-regen" ${acctBusy ? 'disabled' : ''}>${acctBusy === 'regen' ? `${I.loader.replace('<svg', '<svg class="spin"')} Releyendo la cuenta…` : `${I.refresh} Releer y regenerar diagnóstico (no gasta el gratis)`}</button>
     </div>
@@ -320,6 +321,21 @@ async function loadAccount() {
   }
   acctBusy = 'load'; acctMsg = ''; render();
   try { acct = await call('GET', null, `?view=account&user_id=${encodeURIComponent(selUser)}`); } catch (e) { acctMsg = e.message; }
+  acctBusy = ''; render();
+}
+
+async function publicRefresh() {
+  acctBusy = 'public'; acctMsg = 'Leyendo datos públicos de las publicaciones con el token de otra cuenta conectada (no lee ventas ni facturación)…'; render();
+  try {
+    let d = await call('POST', { action: 'public_refresh', user_id: selUser, start: true });
+    for (let i = 0; i < 40 && !d.done; i++) {
+      acctMsg = `Leyendo publicaciones: ${d.cursor}/${d.total} (token de ${d.donor})…`; render();
+      d = await call('POST', { action: 'public_refresh', user_id: selUser });
+    }
+    acctMsg = d.done ? `Listo: ${d.total} publicaciones releídas con el token de ${d.donor}. Atributos leídos en ${d.withAttrs}. Diagnóstico regenerado.` : 'Sigue: tocá el botón de nuevo para continuar.';
+    await loadAccount();
+    return;
+  } catch (e) { acctMsg = e.message; }
   acctBusy = ''; render();
 }
 
@@ -355,7 +371,7 @@ async function regenAccount() {
 }
 
 function validationView() {
-  const connected = users.filter((u) => u.connected);
+  const connected = users; // también las desconectadas: sus datos siguen guardados
   const r = run?.report;
   const sm = r?.summary;
   const c = r?.competition;
@@ -364,7 +380,7 @@ function validationView() {
   <div class="page-head" style="padding-top:4px"><div><h1>Validación</h1><div class="small muted">Las últimas 10 ventas de una cuenta real: lo que calcula Rinde contra la facturación de Mercado Libre y la orden. Marcamos en rojo cuando la diferencia pasa el 2 %.</div></div></div>
   <div class="card" style="display:grid;gap:12px;margin-bottom:14px">
     ${connected.length ? `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-      <div class="field" style="flex:1 1 240px"><label for="vu">Cuenta conectada</label><select id="vu">${connected.map((u) => `<option value="${esc(u.id)}" ${selUser === u.id ? 'selected' : ''}>${esc(u.nickname)} · ID ${esc(u.meli_user_id)}</option>`).join('')}</select></div>
+      <div class="field" style="flex:1 1 240px"><label for="vu">Cuenta conectada</label><select id="vu">${connected.map((u) => `<option value="${esc(u.id)}" ${selUser === u.id ? 'selected' : ''}>${esc(u.nickname)} · ID ${esc(u.meli_user_id)}${u.connected ? '' : ' · desconectada'}</option>`).join('')}</select></div>
       <button class="btn btn-primary" id="vrun" ${busy ? 'disabled' : ''}>${busy ? `${I.loader.replace('<svg', '<svg class="spin"')} Consultando Mercado Libre…` : `${I.refresh} Validar últimas 10 ventas`}</button></div>`
       : `<div class="notice notice-info">${I.info}<div>Todavía no hay cuentas conectadas. Conectá la tuya desde <a href="/">la página de inicio</a> y volvé acá.</div></div>`}
     ${valError ? `<div class="notice notice-bad" role="alert">${I.alert}<div>${esc(valError)}</div></div>` : ''}
@@ -395,6 +411,7 @@ function validationView() {
   document.getElementById('acc-load')?.addEventListener('click', loadAccount);
   document.getElementById('acc-regen')?.addEventListener('click', regenAccount);
   document.getElementById('acc-stored')?.addEventListener('click', regenStored);
+  document.getElementById('acc-public')?.addEventListener('click', publicRefresh);
   document.getElementById('vcopy')?.addEventListener('click', async () => {
     const t = document.getElementById('vraw').textContent;
     try { await navigator.clipboard.writeText(t); document.getElementById('vcopy').textContent = 'Copiado'; } catch { const sel = getSelection(); const rg = document.createRange(); rg.selectNodeContents(document.getElementById('vraw')); sel.removeAllRanges(); sel.addRange(rg); }
@@ -425,8 +442,8 @@ async function runValidation() {
 // ─────────────────────────────── Conexiones ────────────────────────────────
 const okTag = (ok, yes = 'Conecta', no = 'No conecta') => (ok ? `<span class="tag tag-ok">${I.check} ${yes}</span>` : `<span class="tag tag-bad">${I.x} ${no}</span>`);
 
-const EVENT_LABEL = { disconnect: 'Desconectó MeLi', delete: 'Borró sus datos', delete_rejected: 'Intento de borrar (sin BORRAR)', token_error: 'Error de token', logout: 'Salió', login: 'Conectó', login_error: 'Error al conectar' };
-const EVENT_TONE = { disconnect: 'warn', delete: 'bad', delete_rejected: 'warn', token_error: 'bad', logout: 'neutral', login: 'ok', login_error: 'bad' };
+const EVENT_LABEL = { public_refresh: 'Relectura de datos públicos', admin_regen: 'Diagnóstico regenerado', disconnect: 'Desconectó MeLi', delete: 'Borró sus datos', delete_rejected: 'Intento de borrar (sin BORRAR)', token_error: 'Error de token', logout: 'Salió', login: 'Conectó', login_error: 'Error al conectar' };
+const EVENT_TONE = { public_refresh: 'neutral', admin_regen: 'neutral', disconnect: 'warn', delete: 'bad', delete_rejected: 'warn', token_error: 'bad', logout: 'neutral', login: 'ok', login_error: 'bad' };
 function shortUA(ua) {
   if (!ua) return 'sin dato';
   const os = /iPhone|iPad/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
