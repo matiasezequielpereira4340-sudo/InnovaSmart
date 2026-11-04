@@ -296,9 +296,11 @@ function accountCard() {
     ${a?.ready ? `<div class="kpis">
       <div class="kpi"><div class="k-label">Facturación 30 días</div><div class="k-value num">${money2(a.revenue.d30)}</div><div class="k-sub">${a.revenue.orders30 ?? '—'} ventas pagadas</div></div>
       <div class="kpi"><div class="k-label">Facturación 90 días</div><div class="k-value num">${money2(a.revenue.d90)}</div><div class="k-sub">${a.has180 ? 'órdenes pagadas' : 'falta releer la cuenta'}</div></div>
-      <div class="kpi ${a.sanity.exceeds30 ? 'is-bad' : 'is-ok'}"><div class="k-label">Estimado del titular</div><div class="k-value num">${fmtMoney(a.lostTotal)}</div><div class="k-sub">${a.sanity.exceeds30 ? 'MAYOR que lo facturado en 30 días' : 'menor que lo facturado en 30 días'}</div></div>
+      <div class="kpi ${a.sanity.exceedsAvg ? 'is-bad' : 'is-ok'}"><div class="k-label">Estimado del titular</div><div class="k-value num">${fmtMoney(a.lostTotal)}</div><div class="k-sub">${a.sanity.exceedsAvg ? 'MAYOR que el promedio mensual de 6 meses: revisar' : 'dentro del promedio mensual de 6 meses'}</div></div>
       <div class="kpi"><div class="k-label">Promedio mensual 6 meses</div><div class="k-value num">${money2(a.revenue.monthlyAvg180)}</div><div class="k-sub">techo del estimado</div></div>
     </div>
+    ${a.revenue.cancelled30 != null ? `<div class="small">Últimos 30 días: ${a.revenue.orders30} ventas cobradas${a.revenue.cancelled30 ? ` + ${a.revenue.cancelled30} cancelada(s) por ${fmtMoney(a.revenue.cancelled30_amount)} (Mercado Libre las suma en "ventas brutas"; Rinde no las cuenta como facturación)` : ' · sin canceladas'}.${a.revenue.statuses30 ? ` Estados: ${Object.entries(a.revenue.statuses30).map(([k, v]) => `${esc(k)} ${v}`).join(', ')}.` : ''}</div>` : '<div class="small muted">Para ver canceladas y meses, tocá "Releer y regenerar".</div>'}
+    ${a.revenue.months ? `<div class="table-wrap"><table class="data"><thead><tr><th>Mes (hora AR)</th><th>Ventas cobradas</th><th>Facturación</th><th>Canceladas</th></tr></thead><tbody>${Object.entries(a.revenue.months).sort((x, y) => y[0].localeCompare(x[0])).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="num">${v.orders}</td><td class="num">${fmtMoney(v.amount)}</td><td class="num">${v.cancelled ? `${v.cancelled} · ${fmtMoney(v.cancelled_amount)}` : '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div class="small muted">Titular: ${esc(a.headline)} · Abandonadas: ${a.abandoned}${a.problems.length ? ` · ${a.problems.map((p) => `${esc(p.label)}: ${esc(p.detail)}`).join(' · ')}` : ''}</div>` : a && !a.ready ? '<div class="small muted">La cuenta todavía se está leyendo. Probá "Releer y regenerar".</div>' : ''}
   </section>`;
 }
@@ -358,13 +360,13 @@ function validationView() {
     ${kpi('Ventas analizadas', sm.sales, `${sm.withBilling} con facturación · ${sm.estimated} estimadas`)}
     ${kpi('Con diferencia +2 %', sm.withAlerts, 'ventas a revisar', sm.withAlerts ? 'is-bad' : 'is-ok')}
     ${kpi('Formato distinto', sm.formatProblems, 'respuestas que no coinciden', sm.formatProblems ? 'is-bad' : 'is-ok')}
-    ${kpi('Competencia sin dato', `${c.sinDato}/${c.total}`, `${Math.round(c.pct * 100)} % de las publicaciones`, c.pct > 0.3 ? 'is-bad' : '')}
+    ${kpi('Liquidación leída', `${sm.settled ?? 0}/${sm.sales}`, `${sm.settledAlerts ?? 0} con diferencia +2 %`, sm.settledAlerts ? 'is-bad' : 'is-ok')}
   </div>
   <div class="grid" style="margin-bottom:16px${r.sales.length ? '' : ';display:none'}">
-    <div class="notice notice-info">${I.info}<div>La facturación respondió con el parámetro <b class="num">${esc(sm.billingParam)}</b>. ${sm.noTaxes ? `En ${sm.noTaxes} de ${sm.withBilling} ventas facturadas no vinieron retenciones.` : ''} Competencia sin dato: ${c.catalogoSinDato} de catálogo y ${c.busquedaSinDato} sin catálogo.</div></div>
+    <div class="notice notice-info">${I.info}<div>La facturación respondió con el parámetro <b class="num">${esc(sm.billingParam)}</b>. ${sm.noTaxes ? `En ${sm.noTaxes} de ${sm.withBilling} ventas facturadas no vinieron retenciones.` : ''}</div></div>
   </div>
   ${settlementTable(r)}
-  ${r.sales.length ? `<h2 style="font-size:1.15rem;margin:0 0 8px">Detalle por venta (cargos)</h2><div class="grid" style="gap:12px">${r.sales.map(saleCard).join('')}</div>` : `<div class="notice notice-info" role="status">${I.info}<div><b>Sin ventas en los últimos 90 días: la rentabilidad aparece cuando vendas.</b> Cuando esta cuenta tenga ventas, acá vas a ver cada una comparada contra la facturación de Mercado Libre.<div class="small" style="margin-top:6px">Competencia sin dato: ${c.sinDato} de ${c.total} publicaciones.</div></div></div>`}
+  ${r.sales.length ? `<h2 style="font-size:1.15rem;margin:0 0 8px">Detalle por venta (cargos)</h2><div class="grid" style="gap:12px">${r.sales.map(saleCard).join('')}</div>` : `<div class="notice notice-info" role="status">${I.info}<div><b>Sin ventas en los últimos 90 días: la rentabilidad aparece cuando vendas.</b> Cuando esta cuenta tenga ventas, acá vas a ver cada una comparada contra la facturación de Mercado Libre.</div></div>`}
   <details class="card" style="margin-top:16px"><summary style="cursor:pointer;font-weight:600">Respuesta cruda de Mercado Libre (sin tokens ni datos del comprador)</summary>
     <p class="small muted" style="margin:10px 0">Así devolvió los datos Mercado Libre. Sirve para revisar el formato real.</p>
     <button class="btn btn-light btn-sm" id="vcopy" type="button">Copiar</button>

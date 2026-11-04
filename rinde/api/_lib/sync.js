@@ -2,12 +2,16 @@
 // Así no superamos el tiempo máximo de una función y el usuario ve cuántas publicaciones vamos analizando.
 import { db } from './db.js';
 import * as meli from './meli.js';
-import { LIMITS } from '../../shared/config.js';
+import { LIMITS, FEATURES } from '../../shared/config.js';
 import { parseSettlement } from '../../shared/validation.js';
 import { markNeedsReconnect } from './audit.js';
 
 const now = () => new Date().toISOString();
 const DAY = 86400000;
+// Ventas que NO cuentan como facturación (MeLi las muestra en "ventas brutas" pero no se cobraron).
+export const NOT_SOLD = new Set(['cancelled', 'invalid']);
+const sold = (o) => !NOT_SOLD.has(o.data?.status);
+const BILLING_V = 2; // versión del lector de facturación: si cambia, se vuelve a leer el último mes
 
 export async function getJob(userId) {
   return db.one('rinde_sync_jobs', { user_id: userId });
@@ -66,12 +70,12 @@ export async function step(userId, sellerId) {
       const raw = await meli.getItems(token, batch);
       const visits = await meli.getVisits30(token, batch);
       const probe = { counts: {}, sample: null };
-      const perf = await meli.pool(raw, 4, (b) => meli.getPerformance(token, b.id, probe));
-      if (raw.length) {
+      const perf = FEATURES.quality ? await meli.pool(raw, 4, (b) => meli.getPerformance(token, b.id, probe)) : raw.map(() => null);
+      if (raw.length && FEATURES.quality) {
         perf.forEach((x) => { if (x?.__error) { probe.counts.error = (probe.counts.error || 0) + 1; if (!probe.sample) probe.sample = { error: String(x.__error).slice(0, 200) }; } });
         try { await db.upsert('rinde_settings', [{ key: 'last_perf_probe', value: { ...probe, at: new Date().toISOString() }, updated_at: new Date().toISOString() }], 'key'); } catch {}
       }
-      const comp = await meli.pool(raw, 3, (b) => meli.getCompetition(token, b));
+      const comp = FEATURES.competition ? await meli.pool(raw, 3, (b) => meli.getCompetition(token, b)) : raw.map(() => null);
       const rows = raw.map((b, i) => {
         const it = meli.normalizeItem(b);
         const q = job.meta.questions?.[b.id];
@@ -97,6 +101,7 @@ export async function step(userId, sellerId) {
           order_id: String(o.id),
           date_created: o.date_created,
           data: {
+            status: o.status || null,
             lines: (o.order_items || []).map((l) => ({ item_id: l.item?.id, sku: l.item?.seller_sku || null, qty: l.quantity, unit_price: l.unit_price, sale_fee: l.sale_fee ?? null })),
             shipping_id: o.shipping?.id || null,
             pack_id: o.pack_id || null,
@@ -113,17 +118,24 @@ export async function step(userId, sellerId) {
       }
       job.meta.orders_offset = offset;
       if (finished) {
-        const recent = await db.selectAll('rinde_orders', { user_id: userId }, { columns: 'order_id,date_created,fees_source', order: 'date_created.desc' });
+        const recent = await db.selectAll('rinde_orders', { user_id: userId }, { columns: 'order_id,date_created,fees_source,fees,data', order: 'date_created.desc' });
         const cutoff = Date.now() - 31 * DAY;
-        const queue = recent.filter((o) => new Date(o.date_created).getTime() >= cutoff && o.fees_source !== 'facturación').map((o) => o.order_id);
+        const queue = recent.filter((o) => new Date(o.date_created).getTime() >= cutoff && sold(o) && (o.fees_source !== 'facturación' || o.fees?.v !== BILLING_V)).map((o) => o.order_id);
         Object.assign(job, { phase: queue.length ? 'billing' : 'finalize', meta: { ...job.meta, billing_queue: queue, billing_done: 0 } });
       }
     } else if (job.phase === 'billing') {
       const queue = job.meta.billing_queue || [];
       const batchIds = queue.slice(job.meta.billing_done, job.meta.billing_done + 25);
       const orders = await db.select('rinde_orders', { user_id: userId, order_id: batchIds });
-      await meli.pool(orders, 4, async (o) => {
-        let fees = await meli.getBillingForOrder(token, o.order_id);
+      // UN pedido para las 25 ventas (MeLi permite 5 por minuto). Si limita (429), se reintenta en el próximo paso.
+      const bill = await meli.getBillingForOrders(token, batchIds, { maxWaitMs: 30000 });
+      if (bill.status === 429 && (job.meta.billing_429 || 0) < 4) {
+        job.meta.billing_429 = (job.meta.billing_429 || 0) + 1;
+        return saveJob(job);
+      }
+      job.meta.billing_429 = 0;
+      await meli.pool(orders, 2, async (o) => {
+        let fees = bill.byOrder[o.order_id] || null;
         let source = 'facturación';
         let taxesUnknown = false;
         if (!fees) {
@@ -133,9 +145,9 @@ export async function step(userId, sellerId) {
           const shipping = await meli.getShippingCost(token, o.data.shipping_id).catch(() => null);
           const taxes = Number(o.data.taxes_amount) || 0;
           taxesUnknown = !taxes;
-          fees = { commission, shipping: shipping || 0, financing: 0, taxes, other: 0 };
+          fees = { commission, shipping: shipping || 0, financing: 0, taxes, other: 0, v: BILLING_V };
         }
-        // Retenciones (IIBB, etc.): no vienen en la facturación de MeLi; las descuenta Mercado Pago al liquidar.
+        // Retenciones (IIBB, etc.): normalmente vienen en la facturación (tax_details); si no, se leen del pago en Mercado Pago.
         if (!(fees.taxes > 0) && (o.data.payment_ids || []).length) {
           let taxes = 0, read = false;
           for (const pid of o.data.payment_ids) {
@@ -152,13 +164,24 @@ export async function step(userId, sellerId) {
     } else if (job.phase === 'finalize') {
       const orders = await db.selectAll('rinde_orders', { user_id: userId }, { columns: 'order_id,date_created,data', order: 'order_id.asc' });
       // Ventas por publicación (unidades y $) en 30/90/180 días, y facturación real de la cuenta.
+      // Las canceladas no cuentan, pero se informan aparte (MeLi las suma en "ventas brutas").
       const st = {};
-      const revenue = { d30: 0, d90: 0, d180: 0, orders30: 0, orders90: 0, orders180: 0 };
+      const revenue = { d30: 0, d90: 0, d180: 0, orders30: 0, orders90: 0, orders180: 0, cancelled30: 0, cancelled30_amount: 0, statuses30: {}, months: {} };
       const t30 = Date.now() - 30 * DAY, t90 = Date.now() - 90 * DAY, t180 = Date.now() - 180 * DAY;
+      const monthAR = (iso) => new Date(new Date(iso).getTime() - 3 * 3600000).toISOString().slice(0, 7); // mes en hora argentina
       for (const o of orders) {
         const t = new Date(o.date_created).getTime();
         if (t < t180) continue;
         const gross = (o.data.lines || []).reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0);
+        const status = o.data.status || 'paid';
+        const m = (revenue.months[monthAR(o.date_created)] ||= { orders: 0, amount: 0, cancelled: 0, cancelled_amount: 0 });
+        if (t >= t30) revenue.statuses30[status] = (revenue.statuses30[status] || 0) + 1;
+        if (!sold(o)) {
+          m.cancelled++; m.cancelled_amount += gross;
+          if (t >= t30) { revenue.cancelled30++; revenue.cancelled30_amount += gross; }
+          continue;
+        }
+        m.orders++; m.amount += gross;
         revenue.d180 += gross; revenue.orders180++;
         if (t >= t90) { revenue.d90 += gross; revenue.orders90++; }
         if (t >= t30) { revenue.d30 += gross; revenue.orders30++; }
@@ -212,6 +235,7 @@ export async function loadAccount(userId) {
   const lines = [];
   for (const o of orders) {
     if (new Date(o.date_created).getTime() < cutoff30) continue;
+    if (NOT_SOLD.has(o.data?.status)) continue;
     const ls = o.data.lines || [];
     const total = ls.reduce((s, l) => s + l.qty * l.unit_price, 0) || 1;
     for (const l of ls) {
@@ -219,7 +243,7 @@ export async function loadAccount(userId) {
       const f = o.fees || { commission: (Number(l.sale_fee) || 0) * l.qty, shipping: 0, financing: 0, taxes: 0, other: 0 };
       lines.push({
         order_id: o.order_id, item_id: l.item_id, sku: l.sku, qty: l.qty, unit_price: l.unit_price, date: o.date_created,
-        fees: o.fees ? Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v * share])) : f,
+        fees: o.fees ? Object.fromEntries(Object.entries(f).filter(([k]) => k !== 'v').map(([k, v]) => [k, v * share])) : f,
         estimated: o.fees_source !== 'facturación',
         taxes_unknown: o.fees_source !== 'facturación' && (o.taxes_unknown || !o.fees),
         source: o.fees_source || 'orden',

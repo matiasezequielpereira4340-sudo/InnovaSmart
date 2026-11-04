@@ -94,6 +94,7 @@ export function getDemoData() {
           financing: Math.round(gross * fee.financing),
           taxes: Math.round(gross * TAX_RATE),
           other: 0,
+          fixed_fee: price < 33000 ? 1150 * qty : 0, // cargo fijo por unidad (incluido en comisión)
         },
         estimated,
         source: estimated ? 'orden' : 'facturación',
@@ -101,8 +102,11 @@ export function getDemoData() {
     }
   });
 
+  const d30 = lines.reduce((t, l) => t + l.qty * l.unit_price, 0);
   return {
     demo: true,
+    // Facturación de ejemplo: el último mes cayó respecto del promedio de 6 meses.
+    revenue: { d30, d90: Math.round(d30 * 3.4), d180: Math.round(d30 * 7.2), orders30: new Set(lines.map((l) => l.order_id)).size, cancelled30: 1, cancelled30_amount: 47990, statuses30: { paid: new Set(lines.map((l) => l.order_id)).size, cancelled: 1 }, months: null },
     seller: {
       id: 123456789,
       nickname: 'TIENDA.EJEMPLO',

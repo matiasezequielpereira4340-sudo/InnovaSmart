@@ -25,12 +25,18 @@ export const THRESHOLDS = {
   // Si el margen a costo de reposición es menor que el margen a costo de compra
   // por más de estos puntos, alertamos.
   REPLACEMENT_GAP_ALERT: 0.1,
+  // Si envío + cargo fijo superan este % del precio, marcamos "El envío gratis te come esta venta".
+  SHIP_FIXED_EATS: 0.5,
   // Preguntas sin responder hace más de estas horas disparan alerta.
   QUESTION_ALERT_HOURS: 24,
   // "Sin salida": casi sin visitas, sin ventas en 90 días y competencia saturada.
   NO_DEMAND_VISITS_30D: 8,
   NO_DEMAND_COMPETITORS: 40,
 };
+
+// Datos de MeLi que hoy la app no puede leer: calidad (/item/{id}/performance responde 403 "sin permiso")
+// y competencia (la búsqueda pública /sites/MLA/search está cerrada para apps). Si MeLi habilita el permiso, poner true.
+export const FEATURES = { quality: false, competition: false };
 
 export const LIMITS = {
   // Tope de tokens de salida de IA por diagnóstico completo de una cuenta.

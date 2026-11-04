@@ -74,6 +74,11 @@ export function buildModel(data) {
     d180: rev?.d180 ?? null,
     monthlyAvg180: rev?.d180 != null ? rev.d180 / 6 : null,
     orders30: rev?.orders30 ?? new Set(lines.map((l) => l.order_id)).size,
+    orders90: rev?.orders90 ?? null,
+    cancelled30: rev?.cancelled30 ?? null,
+    cancelled30_amount: rev?.cancelled30_amount ?? null,
+    statuses30: rev?.statuses30 || null,
+    months: rev?.months || null,
   };
   // Control: el estimado no debería superar lo que se factura por mes. Si pasa, se marca para revisar (no se tapa).
   const sanity = {
@@ -109,7 +114,7 @@ const FIX_HINT = {
   conversion_general: 'Mejorá foto principal y descripción.',
 };
 
-export const LOST_EXPLAIN = 'Es una estimación, no plata que perdiste. Sale solo de tus ventas reales de los últimos 6 meses: para cada publicación miramos cuánto facturaba por mes en promedio. Si hoy no puede vender (sin stock, pausada, con infracción), contamos ese promedio; si vende menos que antes, contamos la diferencia. Cada publicación se cuenta una sola vez, en su problema principal. Las que no vendieron nada en 6 meses no suman (las ves aparte como "abandonadas") y Full/Flex es solo una recomendación. Por eso este número nunca puede ser mayor a lo que facturaste en promedio por mes.';
+export const LOST_EXPLAIN = 'Es una estimación, no plata que perdiste. Sale solo de tus ventas reales de los últimos 6 meses. Contamos únicamente las publicaciones que hoy no pueden vender (sin stock, pausadas, con infracción o en revisión): para cada una tomamos lo que facturaba por mes en promedio. Cada publicación se cuenta una sola vez. Si una publicación activa vende menos que antes no sumamos plata, porque puede ser temporada. Las que no vendieron nada en 6 meses no suman (las ves aparte como "abandonadas"), y Clásica/cuotas o Full/Flex son solo sugerencias. Por eso este número nunca puede ser mayor a lo que vendías en promedio por mes en los últimos 6 meses.';
 
 const itemsLine = (top, more) => top.map((t) => ({ title: t.title, sold: t.sold, permalink: t.permalink, id: t.id })).concat(more ? [{ more }] : []);
 
@@ -121,7 +126,9 @@ export function buildRuleSummary(model) {
     headline: model.lostTotal > 0
       ? `Ventas que podrías estar perdiendo: ~${fmtMoney(model.lostTotal)}/mes (estimado)`
       : p.length ? 'No vemos ventas perdidas importantes, pero hay cosas para mejorar.' : 'Tu cuenta está sana. Seguí así y cargá tus costos para controlar el margen.',
-    revenueNote: rev30 != null ? `Tu facturación de los últimos 30 días: ${fmtMoney(rev30)}` : null,
+    revenueNote: model.revenue?.monthlyAvg180 != null && rev30 != null
+      ? `En los últimos 6 meses vendías ~${fmtMoney(model.revenue.monthlyAvg180)}/mes en promedio; en los últimos 30 días, ${fmtMoney(rev30)}`
+      : rev30 != null ? `Tu facturación de los últimos 30 días: ${fmtMoney(rev30)}` : null,
     explain: model.lostTotal > 0 ? LOST_EXPLAIN : null,
     problems: p.map((x) => ({
       label: x.label,
@@ -136,7 +143,9 @@ export function buildRuleSummary(model) {
       fix: 'Decidí cuáles mejorar a fondo y cuáles cerrar: ocupan stock y atención.',
       top: itemsLine(model.abandoned.top, model.abandoned.more),
     } : null,
-    tips: (model.tips || []).map((t) => ({ label: 'Sugerencia', detail: `Si en algún momento querés acelerar entregas, Flex o Full ayudan a posicionar. No lo contamos como plata perdida.`, small: true })),
+    tips: (model.tips || []).map((t) => ({ label: 'Sugerencia', detail: t.code === 'publicacion_clasica'
+      ? `${t.count} publicación(es) son Clásicas: en Premium se ofrecen cuotas sin interés. Es una sugerencia, no la contamos como plata perdida.`
+      : 'Si en algún momento querés acelerar entregas, Flex o Full ayudan a posicionar. No lo contamos como plata perdida.', small: true })),
     first: p[0] ? (FIX_HINT[p[0].code] || '').replace(/:$/, '.') : null,
     source: 'reglas',
   };

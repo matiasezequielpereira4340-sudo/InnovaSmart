@@ -21,7 +21,7 @@ function diff(a, b, base) {
 export function buildValidationReport({ orders = [], calls = {}, items = [], ordersCall = null }) {
   const sales = orders.slice(0, 10).map((o) => {
     const c = calls[o.id] || {};
-    const billing = c.billing?.body !== undefined ? parseBilling(c.billing.body) : null;
+    const billing = c.billing?.status === 200 ? parseBilling(c.billing.body, o.id) : null;
     const ord = orderFees(o, c.shipment?.body);
     const rinde = rindeFees(billing, ord);
     const billTotal = billing && billing.lines.length ? billing.total : null;
@@ -41,7 +41,8 @@ export function buildValidationReport({ orders = [], calls = {}, items = [], ord
     const netRow = { key: 'net', label: 'Te quedó (antes del costo del producto)', rinde: net.rinde, billing: net.billing, order: net.order, dRB: diff(net.rinde, net.billing, gross), dOB: diff(net.order, net.billing, gross) };
 
     const flags = [];
-    if (c.billing?.status && c.billing.status >= 400) flags.push(`Facturación respondió error ${c.billing.status}.`);
+    if (c.billing?.status === 429) flags.push('Mercado Libre limitó los pedidos a la facturación (429, máximo 5 por minuto): esta venta quedó sin control independiente.');
+    else if (c.billing?.status && c.billing.status >= 400) flags.push(`Facturación respondió error ${c.billing.status}.`);
     if (billing?.empty) flags.push('La facturación todavía no tiene esta venta: Rinde usa la orden (estimado).');
     if (billing && !billing.formatOk) flags.push('El formato de la facturación no es el que esperábamos.');
     if (billing) billing.problems.forEach((p) => flags.push(p));
@@ -117,7 +118,7 @@ const money = (v) => '$' + Math.round(v).toLocaleString('es-AR');
 export function parseSettlement(body) {
   if (!body || typeof body !== 'object') return null;
   const p = body.collection && typeof body.collection === 'object' ? body.collection : body;
-  const net = p.transaction_details?.net_received_amount ?? p.net_received_amount ?? null;
+  const net = p.transaction_details?.net_received_amount ?? p.amounts?.collector?.net_received ?? p.net_received_amount ?? null;
   const fees = Object.fromEntries(FEE_KEYS.map((k) => [k, 0]));
   const lines = [];
   const charges = Array.isArray(p.charges_details) ? p.charges_details.filter((c) => !c.accounts || c.accounts.from === 'collector') : [];

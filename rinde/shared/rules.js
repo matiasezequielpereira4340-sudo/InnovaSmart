@@ -78,7 +78,6 @@ export function classify(it, profit, seller = {}) {
   if (conv != null && conv < T.CONVERSION_MIN) {
     const gap = priceGap(it);
     if (gap != null && gap > T.PRICE_GAP_ALERT) push('precio_alto', `Tu precio está ${pct(gap)} arriba de la competencia (${fmt(competitorRef(it))}).`, 3);
-    if (it.competition == null) push('competencia_sin_dato', 'Precio de la competencia: sin dato de Mercado Libre.', 0);
     if ((it.pictures_count ?? 0) < T.PICTURES_MIN) push('pocas_fotos', `Tiene ${it.pictures_count ?? 0} foto(s); se recomiendan al menos ${T.PICTURES_MIN}.`, 2);
     if (it.listing_type !== 'gold_pro') push('sin_cuotas', 'No ofrece cuotas sin interés (publicación Clásica).', 2);
     if ((it.questions_unanswered ?? 0) > 0) push('preguntas_sin_responder', `Tiene ${it.questions_unanswered} pregunta(s) sin responder.`, 3);
@@ -131,33 +130,27 @@ export function itemHistory(it) {
 }
 
 // Motivos que son recomendación, no plata en juego.
-const NON_MONETARY = new Set(['sin_full_flex']);
+const NON_MONETARY = new Set(['sin_full_flex', 'publicacion_clasica', 'sin_cuotas']);
 
 /** Problema principal de la publicación: el de más peso que sí mueve ventas. Cada publicación cuenta una sola vez. */
 export function primaryReason(cls) {
   const list = (cls.reasons || []).filter((x) => x.weight > 0 && !NON_MONETARY.has(x.code));
-  if (!list.length) return (cls.reasons || []).some((x) => x.code === 'sin_full_flex') ? (cls.category === 'SIN_VENTAS' ? 'conversion_general' : 'visibilidad_general') : null;
+  if (!list.length) return (cls.reasons || []).some((x) => NON_MONETARY.has(x.code)) ? (cls.category === 'SIN_VENTAS' ? 'conversion_general' : 'visibilidad_general') : null;
   return list.reduce((a, b) => (b.weight > a.weight ? b : a)).code;
 }
 
 /**
  * Ventas mensuales que podría estar perdiendo UNA publicación (en $). Se muestra como "estimado".
- * Sale solo de SUS ventas reales: lo que facturaba por mes en los últimos 6 meses, menos lo que factura hoy.
+ * Solo cuentan las que HOY no pueden vender (sin stock, pausadas, con infracción o en revisión):
+ * se toma lo que esa publicación facturaba por mes en los últimos 6 meses (sus ventas reales).
+ * Si una publicación activa vende menos que antes no sumamos plata: puede ser temporada y no sabemos la causa.
  * Si no vendió nada en 180 días aporta $0 (va a "Publicaciones abandonadas").
  * Por construcción, la suma nunca supera el promedio mensual facturado de la cuenta en los últimos 6 meses.
  */
 export function lostSalesEstimate(it, cls) {
   const h = itemHistory(it);
   if (h.abandoned) return 0;
-  switch (cls.category) {
-    case 'OPERATIVO': // hoy no puede vender: se pierde lo que vendía por mes
-      return h.monthlyRevenue;
-    case 'SIN_VISITAS':
-    case 'SIN_VENTAS': // vende menos que su propio promedio
-      return Math.max(0, h.monthlyRevenue - h.revenue30);
-    default:
-      return 0;
-  }
+  return cls.category === 'OPERATIVO' ? h.monthlyRevenue : 0;
 }
 
 const PROBLEM_LABELS = {
@@ -199,8 +192,10 @@ export function rankProblems(rows) {
   const agg = {};
   const abandoned = [];
   const fullFlex = [];
+  const classic = [];
   for (const r of rows) {
     if ((r.cls.reasons || []).some((x) => x.code === 'sin_full_flex')) fullFlex.push(r);
+    if ((r.cls.reasons || []).some((x) => x.code === 'publicacion_clasica' || x.code === 'sin_cuotas')) classic.push(r);
     const code = primaryReason(r.cls);
     const loss = r.profit?.net < 0 ? -r.profit.net : 0;
     if (!code) continue;
@@ -215,7 +210,10 @@ export function rankProblems(rows) {
   return {
     problems,
     abandoned: { count: abandoned.length, items: abandoned.map((r) => r.it.id), top: abandoned.slice(0, TOP_N).map((r) => ({ id: r.it.id, title: r.it.title, sold: 0, permalink: r.it.permalink || null })), more: Math.max(0, abandoned.length - TOP_N) },
-    tips: fullFlex.length ? [{ code: 'sin_full_flex', label: PROBLEM_LABELS.sin_full_flex, count: fullFlex.length, top: topItems(fullFlex), more: Math.max(0, fullFlex.length - TOP_N) }] : [],
+    tips: [
+      ...(classic.length ? [{ code: 'publicacion_clasica', label: PROBLEM_LABELS.publicacion_clasica, count: classic.length }] : []),
+      ...(fullFlex.length ? [{ code: 'sin_full_flex', label: PROBLEM_LABELS.sin_full_flex, count: fullFlex.length }] : []),
+    ],
   };
 }
 
@@ -254,7 +252,7 @@ export function buildRulePlan(it, cls, profit) {
       headline: 'Este producto no tiene salida: liquidalo o pausalo.',
       actions: [
         { title: 'Liquidá el stock', detail: 'Bajá el precio hasta recuperar el costo y liberá esa plata para productos que sí rotan.', impact: 'alto' },
-        { title: 'O pausalo y no repongas', detail: `Visitas 30 días: ${it.visits30 ?? 'sin dato'}. Ventas 90 días: ${it.sales90 ?? 0}. Competidores: ${it.competition?.count ?? 'sin dato'}.`, impact: 'medio' },
+        { title: 'O pausalo y no repongas', detail: `Visitas 30 días: ${it.visits30 ?? 'sin dato'}. Ventas 90 días: ${it.sales90 ?? 0}.${it.competition?.count != null ? ` Competidores: ${it.competition.count}.` : ''}`, impact: 'medio' },
       ],
       source: 'reglas',
     };
@@ -286,16 +284,20 @@ export function computeProductProfit(lines, cost, ads = 0) {
   const units = lines.reduce((s, l) => s + (l.qty || 0), 0);
   const revenue = lines.reduce((s, l) => s + (l.qty || 0) * (l.unit_price || 0), 0);
   const f = { commission: 0, shipping: 0, financing: 0, taxes: 0, other: 0 };
+  let fixedFee = 0; // cargo fijo por unidad (ya incluido en comisión)
   let estimated = false;
   let taxesUnknown = false;
   for (const l of lines) {
     for (const k of Object.keys(f)) f[k] += l.fees?.[k] || 0;
+    fixedFee += l.fees?.fixed_fee || 0;
     if (l.estimated) estimated = true;
     if (l.taxes_unknown) taxesUnknown = true;
   }
   const fees = f.commission + f.shipping + f.financing + f.taxes + f.other;
   const hasCost = !!(cost && cost.purchase != null && cost.purchase !== '' && !Number.isNaN(Number(cost.purchase)));
-  const base = { units, revenue, fees: f, feesTotal: fees, ads, estimated, taxesUnknown, hasCost };
+  // Envío + cargo fijo sobre el precio: en productos baratos con envío gratis se comen la venta.
+  const shipFixedShare = revenue > 0 ? (f.shipping + fixedFee) / revenue : null;
+  const base = { units, revenue, fees: f, fixedFee, feesTotal: fees, ads, estimated, taxesUnknown, hasCost, shipFixedShare, shipEats: shipFixedShare != null && shipFixedShare > T.SHIP_FIXED_EATS };
   if (!hasCost) return { ...base, net: null, margin: null, netReplacement: null, marginReplacement: null, minPrice: null, suggestedPrice: null };
 
   const pu = Number(cost.purchase);

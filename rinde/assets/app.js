@@ -227,8 +227,8 @@ function itemCard(r) {
     </summary>
     <div class="i-body">
       <div class="facts">
-        <div class="fact"><span>Calidad Mercado Libre</span><b>${it.quality ? `${sd(it.quality.score)}/100` : '<span class="muted">sin dato</span>'}</b> ${it.quality?.level_wording ? `<span>${esc(it.quality.level_wording)}</span>` : ''}</div>
-        <div class="fact"><span>Competencia (referencia)</span><b>${ref ? fmtMoney(ref) : '<span class="muted">sin dato</span>'}</b>${gap != null ? `<span>${gap > 0 ? 'estás ' + fmtPct(gap) + ' arriba' : 'estás ' + fmtPct(-gap) + ' abajo'}</span>` : ''}</div>
+        ${it.quality?.score != null ? `<div class="fact"><span>Calidad Mercado Libre</span><b>${sd(it.quality.score)}/100</b> ${it.quality.level_wording ? `<span>${esc(it.quality.level_wording)}</span>` : ''}</div>` : ''}
+        ${ref ? `<div class="fact"><span>Competencia (referencia)</span><b>${fmtMoney(ref)}</b>${gap != null ? `<span>${gap > 0 ? 'estás ' + fmtPct(gap) + ' arriba' : 'estás ' + fmtPct(-gap) + ' abajo'}</span>` : ''}</div>` : ''}
         <div class="fact"><span>Preguntas sin responder</span><b>${it.questions_unanswered ?? 0}</b>${it.oldest_question_hours ? `<span>la más vieja: ${it.oldest_question_hours} h</span>` : ''}</div>
         <div class="fact"><span>Ganancia 30 días</span><b class="${profit.net < 0 ? 'neg' : ''}">${profit.hasCost ? (profit.units ? fmtMoney(profit.net) : 'sin ventas') : '<span class="muted">costo sin cargar</span>'}</b></div>
         <div class="fact"><span>Tipo / envío</span><b>${esc(LISTING_LABEL[it.listing_type] || it.listing_type || 'sin dato')} · ${shipLabel(it)}</b></div>
@@ -286,7 +286,9 @@ function profitView() {
   const cls = (v) => (v == null ? '' : v < 0 ? 'neg' : 'pos');
   const inputs = (p) => `<input inputmode="decimal" aria-label="Costo de compra de ${esc(p.title)}" data-cost="${esc(costKey(p.r.it))}" data-f="purchase" value="${p.purchase ?? ''}" placeholder="cargar">`;
   const inputsR = (p) => `<input inputmode="decimal" aria-label="Costo de reposición de ${esc(p.title)}" data-cost="${esc(costKey(p.r.it))}" data-f="replacement" value="${p.replacement ?? ''}" placeholder="opcional">`;
-  const warn = (p) => (p.r.warning ? `<span class="tag tag-bad" title="${esc(p.r.warning)}">${I.alert} Debajo de reposición</span>` : '');
+  const eats = (p) => (p.r.profit.shipEats ? `<span class="tag tag-bad" title="Envío ${fmtMoney(p.r.profit.fees.shipping)} + cargo fijo ${fmtMoney(p.r.profit.fixedFee)} = ${fmtPct(p.r.profit.shipFixedShare)} del precio">${I.alert} El envío gratis te come esta venta</span>` : '');
+  const warn = (p) => (p.r.warning ? `<span class="tag tag-bad" title="${esc(p.r.warning)}">${I.alert} Debajo de reposición</span>` : '') + eats(p);
+  const eatsN = S.model.rows.filter((r) => r.profit.shipEats).length;
   const sortBtn = (key, label) => `<th scope="col" aria-sort="${S.sort.key === key ? (S.sort.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button data-sort="${key}">${label}${S.sort.key === key ? (S.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</button></th>`;
 
   return `
@@ -301,6 +303,7 @@ function profitView() {
   </div>
   <div class="grid" style="margin-top:14px">
     ${k.belowReplacement ? `<div class="notice notice-bad" role="alert">${I.alert}<div><b>Estás vendiendo por debajo de lo que te cuesta reponer</b> en ${k.belowReplacement} producto(s). Con el precio actual, cada venta te descapitaliza. Mirá la columna "Margen repos.".</div></div>` : ''}
+    ${eatsN ? `<div class="notice notice-bad" role="alert">${I.alert}<div><b>El envío gratis te come la venta en ${eatsN} producto(s):</b> el envío y el cargo fijo se llevan más de la mitad del precio. Subí el precio, armá packs o dejá de ofrecer envío gratis en esos productos.</div></div>` : ''}
     ${k.noCost ? `<div class="notice notice-warn">${I.info}<div><b>${k.noCost} producto(s) con ventas tienen el costo sin cargar.</b> No calculamos ganancia para esos productos. Cargalos abajo o subí la plantilla.</div></div>` : ''}
     ${k.estimated ? `<div class="notice notice-info">${I.info}<div>Algunas ventas recientes todavía no figuran en la facturación de Mercado Libre: usamos los datos de la orden y las marcamos como <b>estimado</b>.</div></div>` : ''}
     ${k.taxesUnknown ? `<div class="notice notice-info">${I.info}<div>En algunas ventas Mercado Libre no informó retenciones/impuestos: esas ventas no los incluyen.</div></div>` : ''}
@@ -334,7 +337,7 @@ function profitView() {
 
   <div class="table-wrap desktop-only"><table class="data">
     <thead><tr>${COLS.map(([k2, l]) => sortBtn(k2, l)).join('')}</tr></thead>
-    <tbody>${rows.map((p) => `<tr>
+    <tbody>${rows.map((p) => `<tr${p.r.profit.shipEats ? ' class="row-bad"' : ''}>
       <td class="prod"><b title="${esc(p.title)}">${esc(p.title)}</b><span class="tiny muted">${esc(costKey(p.r.it))}${p.r.profit.estimated ? ' · <span class="tag tag-neutral" style="padding:0 6px">estimado</span>' : ''}</span> ${warn(p)}</td>
       <td class="num">${p.units || '<span class="muted">0</span>'}</td>
       <td class="num">${p.units ? money(p.revenue) : '—'}</td>
@@ -351,6 +354,7 @@ function profitView() {
   <div class="pcards mobile-only">${rows.map((p) => `<div class="pc">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><b style="line-height:1.3">${esc(p.title)}</b>${p.r.profit.hasCost && p.units ? (p.net < 0 ? `<span class="tag tag-bad">${I.down} Pierde</span>` : `<span class="tag tag-ok">${I.up} Gana</span>`) : `<span class="tag tag-neutral">${p.r.profit.hasCost ? 'Sin ventas' : 'Costo sin cargar'}</span>`}</div>
     ${p.r.warning ? `<div class="notice notice-bad small" style="margin:8px 0;padding:8px 10px">${I.alert}<div>${esc(p.r.warning)}</div></div>` : ''}
+    ${p.r.profit.shipEats ? `<div class="notice notice-bad small" style="margin:8px 0;padding:8px 10px">${I.alert}<div><b>El envío gratis te come esta venta:</b> envío ${fmtMoney(p.r.profit.fees.shipping)} + cargo fijo ${fmtMoney(p.r.profit.fixedFee)} = ${fmtPct(p.r.profit.shipFixedShare)} del precio.</div></div>` : ''}
     <div class="row"><span>Ventas 30 d</span><b>${p.units} u · ${p.units ? fmtMoney(p.revenue) : '—'}</b></div>
     <div class="row"><span>Cargos ML + publicidad</span><b>${p.units ? fmtMoney(p.fees + p.ads) : '—'}</b></div>
     <div class="row"><span>Ganancia neta</span><b class="${cls(p.net)}">${!p.r.profit.hasCost ? 'costo sin cargar' : p.units ? fmtMoney(p.net) : '—'}</b></div>

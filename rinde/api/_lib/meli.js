@@ -258,9 +258,10 @@ export async function getCompetition(t, item) {
   return null;
 }
 
-/** Órdenes pagas de los últimos `days` días (paginado). */
+/** Órdenes de los últimos días, de cualquier estado (paginado). */
+// Todas las ventas (no solo 'paid'): las canceladas se guardan con su estado y no cuentan como facturación.
 export async function getOrdersPage(t, sellerId, fromIso, offset) {
-  return meliGet(t, `/orders/search?seller=${sellerId}&order.status=paid&order.date_created.from=${encodeURIComponent(fromIso)}&sort=date_desc&limit=50&offset=${offset}`);
+  return meliGet(t, `/orders/search?seller=${sellerId}&order.date_created.from=${encodeURIComponent(fromIso)}&sort=date_desc&limit=50&offset=${offset}`);
 }
 
 /**
@@ -314,12 +315,35 @@ export async function getSettlementRaw(t, paymentId) {
   }
 }
 
-/** Cargos reales por venta según la facturación. null si todavía no hay dato legible. */
-export async function getBillingForOrder(t, orderId) {
-  const raw = await getBillingRaw(t, orderId);
-  if (raw.status !== 200) return null;
-  const parsed = parseBilling(raw.body);
-  return parsed.lines.length ? parsed.fees : null;
+/**
+ * FACTURACIÓN de VARIAS ventas en UN solo pedido (?order_ids=a,b,c).
+ * MeLi limita este servicio a 5 pedidos por minuto: si responde 429, esperamos lo que pide y reintentamos.
+ * @returns { status, body, param, waited }
+ */
+export async function getBillingBatchRaw(t, orderIds, { maxWaitMs = 40000 } = {}) {
+  const ids = [...new Set(orderIds.map(String))].slice(0, 50);
+  const t0 = Date.now();
+  let waited = 0;
+  for (let attempt = 0; ; attempt++) {
+    const r = await meliRaw(t, `/billing/integration/group/ML/order/details?order_ids=${ids.join(',')}&limit=250`);
+    if (r.status !== 429) return { ...r, param: 'order_ids', waited, ms: Date.now() - t0 };
+    const wait = 13000 * (attempt + 1); // 5 por minuto = 1 cada 12 s
+    if (waited + wait > maxWaitMs) return { ...r, param: 'order_ids', waited, ms: Date.now() - t0 };
+    await sleep(wait);
+    waited += wait;
+  }
+}
+
+/** Cargos reales por venta según la facturación (de varias ventas a la vez). { [order_id]: fees } solo las que tienen dato legible. */
+export async function getBillingForOrders(t, orderIds, opts) {
+  const raw = await getBillingBatchRaw(t, orderIds, opts);
+  if (raw.status !== 200) return { status: raw.status, byOrder: {} };
+  const byOrder = {};
+  for (const id of orderIds) {
+    const p = parseBilling(raw.body, id);
+    if (p.lines.length) byOrder[String(id)] = { ...p.fees, v: 2 };
+  }
+  return { status: 200, byOrder };
 }
 
 /** Costo de envío a cargo del vendedor (respaldo cuando la facturación no trae el dato). */

@@ -3,7 +3,7 @@
 import { handler, json, readBody, query, AppError, requireEnv } from './_lib/http.js';
 import { safeEqual } from './_lib/crypto.js';
 import { db } from './_lib/db.js';
-import { getAccessToken, meliRaw, getBillingRaw, getSettlementRaw, pool } from './_lib/meli.js';
+import { getAccessToken, meliRaw, getBillingBatchRaw, getSettlementRaw, pool } from './_lib/meli.js';
 import { buildValidationReport, attachSettlements, scrub } from '../shared/validation.js';
 import { loadAccount, getJob, startJob, step, progressOf } from './_lib/sync.js';
 import { buildModel, buildRuleSummary } from '../shared/model.js';
@@ -63,8 +63,10 @@ async function runValidation(user) {
   const ordersCall = await meliRaw(token, `/orders/search?seller=${user.meli_user_id}&order.status=paid&sort=date_desc&limit=10`);
   const orders = ordersCall.status === 200 && Array.isArray(ordersCall.body?.results) ? ordersCall.body.results.slice(0, 10) : [];
   const calls = {};
+  // Facturación de las 10 ventas en UN pedido (MeLi permite 5 por minuto); si limita, espera y reintenta.
+  const billingAll = orders.length ? await getBillingBatchRaw(token, orders.map((o) => o.id), { maxWaitMs: 30000 }) : null;
   await pool(orders, 3, async (o) => {
-    const billing = await getBillingRaw(token, o.id);
+    const billing = billingAll;
     const shipment = o.shipping?.id ? await meliRaw(token, `/shipments/${o.shipping.id}/costs`, { 'x-format-new': 'true' }) : { status: null, body: null };
     // Liquidación real de cada pago de la venta (solo lectura).
     const settlements = [];
