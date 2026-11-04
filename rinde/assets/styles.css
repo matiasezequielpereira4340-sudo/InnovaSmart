@@ -440,3 +440,15 @@ a.chip { text-decoration: none; }
 .season-box { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line-strong); border-left: 4px solid var(--accent); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 14px; }
 .season-box p { margin: 0; }
 .season-box .sb-icon svg { width: 22px; height: 22px; color: var(--accent); }
+
+/* Admin > Cobros: guía y lista de chequeo */
+.gsteps { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 12px; counter-reset: g; }
+.gstep { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.gsee { background: var(--accent-soft); color: var(--accent-ink); border-radius: 6px; padding: 6px 8px; }
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.checklist label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+.checklist input { width: 18px; height: 18px; margin-top: 2px; flex: none; }
+.checklist label { width: 100%; box-sizing: border-box; }
+.cards-test { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.cards-test li { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.cards-test .num { font-size: 1rem; letter-spacing: .02em; }

@@ -49,7 +49,7 @@ export function weeklyEmail({ nickname, model, summary, appUrl }) {
 <h2 style="font-size:16px;margin:20px 0 4px">Dónde podrías estar dejando de vender (estimado)</h2>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${probs}</table>
 <p style="margin:16px 0 0;font-size:14px"><b>Qué arreglar primero:</b> ${esc(summary?.first || '')}</p>
-<p style="margin:8px 0 0;font-size:14px;color:#3d4466">${k.losing} producto(s) pierden plata · ${model.alerts.length} alerta(s) activas.</p>`;
+<p style="margin:8px 0 0;font-size:14px;color:#3d4466">${model.hasAnyCost === false ? 'Cargá tus costos para saber qué productos pierden plata' : `${k.losing} producto(s) pierden plata`} · ${model.alerts.length} alerta(s) activas.</p>`;
   return { subject: 'Rinde: tu resumen semanal', html: layout({ title: 'Resumen semanal de Rinde', preheader: summary?.headline || '', body, appUrl: appUrl + '/app' }) };
 }
 

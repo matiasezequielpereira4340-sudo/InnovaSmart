@@ -104,6 +104,92 @@ function billingTag(u) {
 
 // ─────────────────────────────── Cobros ────────────────────────────────────
 const DEMO_CFG = { monthly_price: 15000, annual_price: 150000, annual_valid_until: '2026-12-31', trial_days: 3, grace_days: 5, remind_days_before: 5, whatsapp: '5491160374306', bank: { holder: 'Matías Ezequiel Pereira', cuit: '20-00000000-0', bank: 'Banco de ejemplo', cbu: '0000000000000000000000', alias: 'RINDE.EJEMPLO' } };
+
+// ─────────────────────────────── Cobros: guía de prueba, avisos y paso a producción ───
+let billingEnv = null;
+let billingEvents = null;
+const TEST_CARDS = [
+  ['Mastercard', '5031 7557 3453 0604', '123', '11/30'],
+  ['Visa', '4509 9535 6623 3704', '123', '11/30'],
+  ['American Express', '3711 803032 57522', '1234', '11/30'],
+];
+const checkKey = 'rinde_prod_checklist';
+function checklistState() { try { return JSON.parse(localStorage.getItem(checkKey) || '{}'); } catch { return {}; } }
+function saveChecklist(st) { try { localStorage.setItem(checkKey, JSON.stringify(st)); } catch {} }
+
+function eventsCard() {
+  const rows = billingEvents;
+  const okOf = (r) => !r.error && !/^(error|rechazado)$/.test(r.result || '');
+  const TOPIC = { subscription_preapproval: 'Suscripción', preapproval: 'Suscripción', subscription_authorized_payment: 'Cobro de la suscripción', authorized_payment: 'Cobro de la suscripción', payment: 'Pago' };
+  return `<section class="card" aria-labelledby="ev-h" style="display:grid;gap:10px">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><h3 id="ev-h" style="margin:0">${I.bell} Avisos del webhook de Mercado Pago</h3><button class="btn btn-light btn-sm" id="ev-reload" type="button">${I.refresh} Actualizar</button></div>
+    <p class="small muted" style="margin:0">Cada aviso que manda Mercado Pago a <span class="num">/api/mp-webhook</span>: cuándo llegó, de qué es, qué hizo Rinde y si salió bien. Si probás y acá no aparece nada, el aviso no llegó (revisá la URL y los eventos del webhook en Mercado Pago).</p>
+    ${!rows ? '<div class="small muted">Cargando…</div>' : rows.error ? `<div class="notice notice-bad small">${I.alert}<div>${esc(rows.error)}</div></div>` : !rows.length ? '<div class="empty" style="padding:12px">Todavía no llegó ningún aviso.</div>'
+      : `<div style="display:grid;gap:6px">${rows.map((r) => `<div style="display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;align-items:center;border-bottom:1px dashed var(--line);padding:6px 0">
+        <span style="display:grid;gap:2px;min-width:0"><b class="small">${esc(TOPIC[r.topic] || r.topic || 'sin tipo')}</b><span class="tiny muted num" style="overflow-wrap:anywhere">${dateTime(r.created_at)} · id ${esc(r.resource_id || '—')}</span></span>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="small">${esc(r.result || '')}${r.error ? ` · ${esc(r.error)}` : ''}</span>${okOf(r) ? `<span class="tag tag-ok">${I.check} OK</span>` : `<span class="tag tag-bad">${I.x} Falló</span>`}</span></div>`).join('')}</div>`}
+  </section>`;
+}
+
+function guideCard() {
+  const env = billingEnv || {};
+  const step = (n, title, body, see) => `<li class="gstep"><b>${n}. ${title}</b><div class="small">${body}</div>${see ? `<div class="gsee small"><b>Qué tenés que ver en Rinde:</b> ${see}</div>` : ''}</li>`;
+  return `<section class="card guide" aria-labelledby="gp-h" style="display:grid;gap:10px">
+    <h3 id="gp-h" style="margin:0">${I.checkCircle} Guía de prueba (Mercado Pago en modo prueba)</h3>
+    <div class="notice ${env.mpConfigured && env.mpTest && env.webhookSecret ? 'notice-ok' : 'notice-warn'} small">${env.mpConfigured && env.mpTest && env.webhookSecret ? I.checkCircle : I.info}<div>Estado hoy: ${env.mpConfigured ? 'credencial de Mercado Pago cargada' : '<b>falta MP_ACCESS_TOKEN</b>'}${env.mpConfigured ? (env.mpTest ? ' (modo prueba)' : ' (<b>parece de producción</b>: para probar usá credenciales de prueba)') : ''} · ${env.webhookSecret ? 'clave del webhook cargada' : '<b>falta MP_WEBHOOK_SECRET</b>'}. Lo mismo lo ves en Conexiones.</div></div>
+    <ol class="gsteps">
+      ${step(1, 'Creá los usuarios de prueba en Mercado Pago', `Entrá a <a href="https://www.mercadopago.com.ar/developers/panel/app" target="_blank" rel="noopener">mercadopago.com.ar/developers/panel/app</a> → elegí tu aplicación → <b>Cuentas de prueba</b> → <b>+ Crear cuenta de prueba</b>. Creá una de tipo <b>Vendedor</b> y otra de tipo <b>Comprador</b>, país Argentina. Anotá usuario y contraseña de cada una (los muestra el panel).`, null)}
+      ${step(2, 'Cargá las credenciales y el webhook de prueba', `En Vercel (proyecto rinde → Settings → Environment Variables) <b>MP_ACCESS_TOKEN</b> tiene que ser una credencial de prueba. Si al pagar Mercado Pago dice que el comprador y el vendedor tienen que ser los dos de prueba, usá el Access Token de <b>producción de la cuenta vendedora de prueba</b> (entrá con esa cuenta en incógnito y copialo de sus credenciales). En Mercado Pago → tu aplicación → <b>Webhooks</b> → <b>Modo de prueba</b>: URL <span class="num">https://rinde-orcin.vercel.app/api/mp-webhook</span>, eventos <b>Planes y suscripciones</b> y <b>Pagos</b>. Guardá y copiá la clave secreta en <b>MP_WEBHOOK_SECRET</b>. Después de cambiar variables, en Vercel → Deployments → el último → <b>Redeploy</b>.`, 'en Conexiones, "Mercado Pago" en verde y "MODO PRUEBA".')}
+      ${step(3, 'Abrí una ventana de incógnito', `Chrome: <b>Ctrl+Shift+N</b> (en Mac <b>Cmd+Shift+N</b>). Así no se mezcla con tu Mercado Pago real. Entrá a <a href="https://www.mercadopago.com.ar" target="_blank" rel="noopener">mercadopago.com.ar</a> con el <b>usuario comprador de prueba</b> (si pide un código de verificación, en el panel de cuentas de prueba figura cómo obtenerlo).`, null)}
+      ${step(4, 'Suscribite en Rinde', `En la misma ventana de incógnito abrí <a href="https://rinde-orcin.vercel.app" target="_blank" rel="noopener">rinde-orcin.vercel.app</a>, conectá una cuenta de Mercado Libre de prueba o la tuya (MATYPERE, que está en plan gratis) y andá a <b>/suscribirme</b> → Mensual → poné el <b>email del comprador de prueba</b> → Pagar con tarjeta.`, null)}
+      ${step(5, 'Pagá con la tarjeta de prueba (aprobado)', `Usá una tarjeta de prueba con titular <b>APRO</b> y DNI <b>12345678</b> (tabla de abajo).`, 'vuelve a /suscribirme con "listo"; en <b>Usuarios</b> la cuenta pasa a Plan Rinde en <b>prueba gratis de 3 días</b>; en <b>Avisos del webhook</b> aparece "Suscripción · suscripción autorizada (trial)" con OK.')}
+      ${step(6, 'Probá el cobro sin esperar 3 días', `El primer cobro real llega cuando termina la prueba gratis. Para verlo hoy: en esta pantalla poné <b>Días de prueba gratis = 0</b> y guardá, en Usuarios pasá la cuenta a gratis y repetí los pasos 4 y 5.`, 'en <b>Avisos del webhook</b> "Cobro de la suscripción · cobro aprobado"; en Usuarios plan <b>activo</b>; en <b>Pagos por facturar</b> el pago con el monto del plan, sin facturar.')}
+      ${step(7, 'Probá un pago rechazado', `Repetí con titular <b>OTHE</b> (rechazo general) o <b>FUND</b> (fondos insuficientes).`, 'Mercado Pago muestra el rechazo y no se crea la suscripción; o, si ya existía, en Avisos aparece "cobro rechazado: empieza la gracia" y en Usuarios queda "en gracia" 5 días sin cortar el plan.')}
+      ${step(8, 'Dejá todo como estaba', `Volvé <b>Días de prueba gratis</b> a 3, pasá la cuenta de prueba a gratis en Usuarios y marcá como facturados (o ignorá) los pagos de prueba en Pagos por facturar.`, null)}
+    </ol>
+    <div class="label">Tarjetas de prueba</div>
+    <ul class="cards-test">${TEST_CARDS.map(([b, n, c, v]) => `<li><b>${b}</b><span class="num">${n}</span><span class="small">código <span class="num">${c}</span> · vence <span class="num">${v}</span></span></li>`).join('')}</ul>
+    <p class="small" style="margin:0"><b>Titular (define el resultado):</b> <span class="num">APRO</span> = aprobado · <span class="num">OTHE</span> = rechazado por error general · <span class="num">FUND</span> = fondos insuficientes · <span class="num">SECU</span> = código de seguridad inválido. Documento: DNI <span class="num">12345678</span>.</p>
+    <p class="tiny muted" style="margin:0">Datos según la documentación de tarjetas de prueba de Mercado Pago Argentina; si cambian, valen los de <a href="https://www.mercadopago.com.ar/developers/es/docs/your-integrations/test/cards" target="_blank" rel="noopener">esa página</a>.</p>
+  </section>`;
+}
+
+function prodChecklistCard() {
+  const st = checklistState();
+  const items = [
+    ['cred', 'Credenciales de producción', 'En Mercado Pago → tu aplicación → <b>Credenciales de producción</b> (de la cuenta real de Innovasmart), copiá el Access Token (empieza con APP_USR-).'],
+    ['var_token', 'Vercel: MP_ACCESS_TOKEN', 'Proyecto rinde → Settings → Environment Variables → <b>MP_ACCESS_TOKEN</b> (Production): reemplazá el valor por el Access Token de producción. No lo pegues en ningún otro lado.'],
+    ['var_mode', 'Vercel: MP_MODE', 'Si existe la variable <b>MP_MODE</b> con "test", borrala.'],
+    ['webhook', 'Webhook en modo productivo', 'Mercado Pago → tu aplicación → <b>Webhooks</b> → <b>Modo productivo</b>: URL <span class="num">https://rinde-orcin.vercel.app/api/mp-webhook</span>, eventos <b>Planes y suscripciones</b> y <b>Pagos</b>. Guardar.'],
+    ['var_secret', 'Vercel: MP_WEBHOOK_SECRET', 'Copiá la <b>clave secreta</b> del webhook productivo y ponela en <b>MP_WEBHOOK_SECRET</b> (Production).'],
+    ['redeploy', 'Redeploy', 'Vercel → Deployments → el último de producción → <b>Redeploy</b> (las variables nuevas solo se toman al volver a publicar).'],
+    ['check_conn', 'Verificar en Conexiones', 'Admin → <b>Conexiones</b>: "Mercado Pago" en verde, con tu cuenta real y <b>sin</b> "MODO PRUEBA".'],
+    ['check_hook', 'Verificar el webhook', 'En Mercado Pago → Webhooks → <b>Simular notificación</b>. En esta pantalla, en <b>Avisos del webhook</b>, tiene que aparecer el aviso (si dice "firma inválida", la clave secreta de Vercel no es la del modo productivo).'],
+    ['check_prices', 'Precios y prueba gratis', 'En esta pantalla: precios mensual y anual correctos, <b>Días de prueba gratis = 3</b> y datos bancarios cargados.'],
+    ['check_real', 'Una suscripción real chica', 'Suscribite vos con tu tarjeta real: tiene que quedar en prueba gratis, el aviso en verde y, al cobrar, el pago en <b>Pagos por facturar</b>. Después cancelala desde Mercado Pago.'],
+  ];
+  const done = items.filter(([k]) => st[k]).length;
+  return `<section class="card" aria-labelledby="pp-h" style="display:grid;gap:10px">
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><h3 id="pp-h" style="margin:0">${I.tag} Lista de chequeo: pasar Mercado Pago a producción</h3><span class="tag ${done === items.length ? 'tag-ok' : 'tag-neutral'}">${done}/${items.length}</span></div>
+    <p class="small muted" style="margin:0">Para el día que pases a cobrar de verdad. Nada de esto se hace solo: los tildes se guardan solo en este navegador.</p>
+    <ul class="checklist">${items.map(([k, t, d]) => `<li><label><input type="checkbox" data-chk="${k}" ${st[k] ? 'checked' : ''}><span><b>${t}</b><span class="small" style="display:block">${d}</span></span></label></li>`).join('')}</ul>
+  </section>`;
+}
+
+async function loadBillingEvents() {
+  if (DEMO) {
+    const now = Date.now();
+    billingEvents = [
+      { created_at: new Date(now - 60e3).toISOString(), topic: 'subscription_authorized_payment', resource_id: '7000123', result: 'cobro aprobado' },
+      { created_at: new Date(now - 3600e3).toISOString(), topic: 'subscription_preapproval', resource_id: '2c938084', result: 'suscripción autorizada (trial)' },
+      { created_at: new Date(now - 7200e3).toISOString(), topic: 'payment', resource_id: '123456', result: 'rechazado', error: 'firma inválida' },
+    ];
+  } else {
+    try { billingEvents = (await call('GET', null, '?view=billing_events')).rows; } catch (e) { billingEvents = { error: e.message }; }
+  }
+  if (tab() === 'cobros') cobrosView();
+}
+
 function cobrosView() {
   const c = billingCfg;
   const plus30 = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -133,8 +219,11 @@ function cobrosView() {
       <div class="pc-inputs" style="margin:0">${f('t_amount', 'Monto cobrado ($)', c.monthly_price, 'text', 'inputmode="numeric"')}${f('t_note', 'Nota (opcional)', '', 'text', 'placeholder="ej. transf. 12/11"')}</div>
       <button class="btn btn-primary" type="submit" ${users.length ? '' : 'disabled'}>Activar plan</button>
     </form>
-  </div>`}`;
+  </div>
+  <div class="grid" style="margin-top:14px;gap:14px">${eventsCard()}${guideCard()}${prodChecklistCard()}</div>`}`;
   hydrateIcons(root);
+  document.getElementById('ev-reload')?.addEventListener('click', () => { billingEvents = null; cobrosView(); loadBillingEvents(); });
+  document.querySelectorAll('[data-chk]').forEach((el) => el.addEventListener('change', () => { const st = checklistState(); st[el.dataset.chk] = el.checked; saveChecklist(st); cobrosView(); }));
   document.getElementById('t_int')?.addEventListener('change', (e) => {
     document.getElementById('t_amount').value = e.target.value === 'annual' ? c.annual_price : c.monthly_price;
     const d = new Date(); d.setMonth(d.getMonth() + (e.target.value === 'annual' ? 12 : 1));
@@ -160,8 +249,9 @@ function cobrosView() {
 }
 
 async function loadCobros() {
-  if (DEMO) { billingCfg = billingCfg || JSON.parse(JSON.stringify(DEMO_CFG)); return cobrosView(); }
-  try { billingCfg = (await call('GET', null, '?view=billing')).config; } catch (e) { billingCfg = null; payMsg = ''; root.innerHTML = `${tabsBar()}<div class="notice notice-bad">${I.alert}<div>${esc(e.message)}</div></div>`; return hydrateIcons(root); }
+  loadBillingEvents();
+  if (DEMO) { billingCfg = billingCfg || JSON.parse(JSON.stringify(DEMO_CFG)); billingEnv = { mpConfigured: true, mpTest: true, webhookSecret: true }; return cobrosView(); }
+  try { const d = await call('GET', null, '?view=billing'); billingCfg = d.config; billingEnv = d.env; } catch (e) { billingCfg = null; payMsg = ''; root.innerHTML = `${tabsBar()}<div class="notice notice-bad">${I.alert}<div>${esc(e.message)}</div></div>`; return hydrateIcons(root); }
   cobrosView();
 }
 
@@ -294,6 +384,10 @@ function accountCard() {
       <button class="btn btn-light btn-sm" id="acc-stored" ${acctBusy ? 'disabled' : ''}>${I.refresh} Regenerar con datos guardados</button>
       <button class="btn btn-light btn-sm" id="acc-regen" ${acctBusy ? 'disabled' : ''}>${acctBusy === 'regen' ? `${I.loader.replace('<svg', '<svg class="spin"')} Releyendo la cuenta…` : `${I.refresh} Releer y regenerar diagnóstico (no gasta el gratis)`}</button>
     </div>
+    <form id="ex-f" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div class="field" style="flex:1 1 220px;margin:0"><label for="ex-to">Mandarme un ejemplo real del email diario y del semanal a</label><input id="ex-to" type="email" required value="${esc(users.find((u) => u.id === selUser)?.alert_email || '')}"></div>
+      <button class="btn btn-light btn-sm" type="submit" ${acctBusy ? 'disabled' : ''}>${I.bell} Mandar ejemplos</button>
+    </form>
     ${acctMsg ? `<div class="small" role="status">${esc(acctMsg)}</div>` : ''}
     ${users.find((u) => u.id === selUser && !u.connected) ? `<div class="notice notice-info small">${I.info}<div>Esta cuenta está desconectada: se ve con los datos guardados. Para la nota completa, esta cuenta tiene que volver a conectar.</div></div>` : ''}
     ${a?.ready ? `<div class="kpis">
@@ -397,6 +491,16 @@ function validationView() {
   document.getElementById('acc-load')?.addEventListener('click', loadAccount);
   document.getElementById('acc-regen')?.addEventListener('click', regenAccount);
   document.getElementById('acc-stored')?.addEventListener('click', regenStored);
+  document.getElementById('ex-f')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (DEMO) { acctMsg = 'En el modo ejemplo no se mandan emails.'; return render(); }
+    acctBusy = 'mail'; acctMsg = 'Mandando…'; render();
+    try {
+      const d = await call('POST', { action: 'send_examples', user_id: selUser, to: document.getElementById('ex-to')?.value || '' });
+      acctMsg = `${d.sent.map((x) => `Email ${x.kind}: ${x.ok ? 'enviado' : 'no salió (' + x.error + ')'}`).join(' · ')}. Alertas incluidas: ${d.alerts}. Remitente: ${d.from}. Sin dominio propio, Resend solo entrega al email dueño de la cuenta de Resend.`;
+    } catch (er) { acctMsg = er.message; }
+    acctBusy = ''; render();
+  });
   document.getElementById('vcopy')?.addEventListener('click', async () => {
     const t = document.getElementById('vraw').textContent;
     try { await navigator.clipboard.writeText(t); document.getElementById('vcopy').textContent = 'Copiado'; } catch { const sel = getSelection(); const rg = document.createRange(); rg.selectNodeContents(document.getElementById('vraw')); sel.removeAllRanges(); sel.addRange(rg); }

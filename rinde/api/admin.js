@@ -11,6 +11,8 @@ import { runHealth } from './_lib/health.js';
 import { sha256 } from './_lib/crypto.js';
 import { getBillingConfig, saveBillingConfig, activateTransfer } from './_lib/mp.js';
 import { mergeBilling } from '../shared/plans.js';
+import { sendEmail, dailyAlertEmail, weeklyEmail } from './_lib/email.js';
+import { appUrl } from './_lib/http.js';
 
 const yearStartAR = () => new Date(`${new Date(Date.now() - 3 * 3600000).getUTCFullYear()}-01-01T00:00:00-03:00`).toISOString();
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -122,7 +124,16 @@ export default handler(async (req, res) => {
     return json(res, 200, { rows, needsReconnect: flagged });
   }
 
-  if (req.method === 'GET' && q.view === 'billing') return json(res, 200, { config: await getBillingConfig() });
+  if (req.method === 'GET' && q.view === 'billing') {
+    const env = { mpConfigured: !!process.env.MP_ACCESS_TOKEN?.trim(), mpTest: /^TEST-/.test(process.env.MP_ACCESS_TOKEN || '') || process.env.MP_MODE === 'test', webhookSecret: !!process.env.MP_WEBHOOK_SECRET?.trim() };
+    return json(res, 200, { config: await getBillingConfig(), env });
+  }
+
+  if (req.method === 'GET' && q.view === 'billing_events') {
+    // Registro de avisos que llegaron al webhook de Mercado Pago (sin datos de tarjeta).
+    const rows = await db.select('rinde_billing_events', {}, { columns: 'id,created_at,topic,resource_id,result,error', order: 'created_at.desc', limit: 100 });
+    return json(res, 200, { rows });
+  }
 
   if (req.method === 'GET' && q.view === 'payments') {
     const all = await db.select('rinde_payments', {}, { order: 'paid_at.desc', limit: 5000 });
@@ -228,6 +239,28 @@ export default handler(async (req, res) => {
       const summary = { ...buildRuleSummary(m), regenerated_by_admin: true };
       await db.insert('rinde_diagnoses', [{ user_id: user.id, input_hash: 'admin-' + Date.now(), summary, tokens_used: 0, sync_finished_at: job.finished_at, counts: m.groupCounts }]);
       return json(res, 200, { done: true, sync: progressOf(job), headline: summary.headline, revenue: m.revenue, lostTotal: m.lostTotal, sanity: m.sanity });
+    }
+    if (body.action === 'send_examples') {
+      // Manda un ejemplo REAL del email diario y del semanal con los datos guardados de una cuenta.
+      const user = await db.one('rinde_users', { id: body.user_id });
+      if (!user) throw new AppError(404, 'No existe ese usuario.');
+      const to = String(body.to || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new AppError(400, 'Poné un email válido.');
+      const job = await getJob(user.id);
+      if (!job || job.status !== 'done') throw new AppError(409, 'Esta cuenta todavía no tiene datos leídos.');
+      const { data } = await loadAccount(user.id);
+      const m = buildModel(data);
+      const base = appUrl(req);
+      const daily = dailyAlertEmail({ nickname: user.nickname, alerts: m.alerts, appUrl: base });
+      const diag = await db.one('rinde_diagnoses', { user_id: user.id }, { order: 'created_at.desc' });
+      const rule = buildRuleSummary(m);
+      const weekly = weeklyEmail({ nickname: user.nickname, model: m, summary: { ...(diag?.summary || {}), ...rule, first: diag?.summary?.first || rule.first }, appUrl: base });
+      const sent = [];
+      for (const [kind, e] of [['diario', daily], ['semanal', weekly]]) {
+        try { await sendEmail({ to, subject: `[Ejemplo] ${e.subject}`, html: e.html }); sent.push({ kind, ok: true }); }
+        catch (er) { sent.push({ kind, ok: false, error: er.message }); }
+      }
+      return json(res, 200, { sent, alerts: m.alerts.length, from: process.env.RINDE_EMAIL_FROM ? 'dominio propio' : 'onboarding@resend.dev (sin dominio)' });
     }
     if (body.action === 'validate') {
       const user = await db.one('rinde_users', { id: body.user_id });
