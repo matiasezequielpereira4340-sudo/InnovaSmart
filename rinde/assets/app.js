@@ -1,7 +1,9 @@
 // Rinde — app (diagnóstico, rentabilidad, alertas). Funciona en modo real (/app) y DEMO (/demo).
 import { I, hydrateIcons } from './icons.js';
-import { CATEGORIES, GROUPS, THRESHOLDS, waLink, PLAN_PRICE_ARS } from '../shared/config.js';
+import { CATEGORIES, GROUPS, THRESHOLDS, waLink, PLAN_PRICE_ARS, EMAIL_ENABLED, COPY } from '../shared/config.js';
 import { fmtMoney, fmtPct, conversion, LISTING_LABEL, ALERT_LABELS, competitorRef, priceGap } from '../shared/rules.js';
+import { evaluateAll, summarize, actionsByItem } from '../shared/campaigns.js';
+import { getCampaignsDemo } from '../shared/campaigns-demo.js';
 import { buildModel, buildRuleSummary, costKey } from '../shared/model.js';
 
 const DEMO = location.pathname.startsWith('/demo') || new URLSearchParams(location.search).has('demo');
@@ -97,8 +99,9 @@ function errorView(msg, retry = true) {
 // ─────────────────────────────── Layout ────────────────────────────────────
 function header() {
   const route = currentRoute();
-  const tab = (r, icon, label) => `<a href="#/${r}" ${route === r ? 'aria-current="page"' : ''}>${I[icon]}<span>${label}</span></a>`;
-  const tabs = `<nav class="tabs" aria-label="Secciones de la app">${tab('diagnostico', 'search', 'Diagnóstico')}${tab('publicaciones', 'list', 'Publicaciones')}${tab('rentabilidad', 'money', 'Rentabilidad')}${tab('alertas', 'bell', 'Alertas')}</nav>`;
+  const unread = (S.unread || []).length;
+  const tab = (r, icon, label) => `<a href="#/${r}" ${route === r ? 'aria-current="page"' : ''}>${I[icon]}<span>${label}${r === 'alertas' && unread ? ` <span class="badge-count" aria-label="${unread} alertas nuevas">${unread}</span>` : ''}</span></a>`;
+  const tabs = `<nav class="tabs" aria-label="Secciones de la app">${tab('diagnostico', 'search', 'Diagnóstico')}${tab('publicaciones', 'list', 'Publicaciones')}${tab('campanas', 'tag', 'Campañas')}${tab('rentabilidad', 'money', 'Rentabilidad')}${tab('alertas', 'bell', 'Alertas')}</nav>`;
   return `${DEMO ? `<div class="demo-bar"><div class="wrap"><span>${I.info.replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px"')} Estás viendo una <b>cuenta de ejemplo</b> con datos ficticios.</span><a href="/api/auth/login">Diagnosticar mi cuenta gratis →</a></div></div>` : ''}
   <header class="topbar"><div class="wrap">
     <a class="logo" href="${DEMO ? '/' : '#/diagnostico'}" aria-label="Rinde"><span class="logo-mark" data-logo></span>Rinde<span class="dot">.</span></a>
@@ -120,7 +123,7 @@ function header() {
 
 function currentRoute() {
   const r = (location.hash || '#/diagnostico').replace('#/', '');
-  return ['diagnostico', 'publicaciones', 'rentabilidad', 'alertas', 'conectando'].includes(r) ? r : 'diagnostico';
+  return ['diagnostico', 'publicaciones', 'campanas', 'rentabilidad', 'alertas', 'conectando'].includes(r) ? r : 'diagnostico';
 }
 
 function connectionBanner() {
@@ -154,6 +157,7 @@ function render() {
   let body = '';
   if (route === 'rentabilidad') body = profitView();
   else if (route === 'publicaciones') body = listingsView();
+  else if (route === 'campanas') body = campaignsView();
   else if (route === 'alertas') body = alertsView();
   else body = diagnosisView();
   $app.innerHTML = header() + connectionBanner() + billingBanner() + `<main class="wrap${route === 'rentabilidad' ? ' wide' : ''}">${body}</main>
@@ -191,6 +195,8 @@ function diagnosisView() {
       : `<a class="btn btn-light btn-sm" href="/suscribirme">${I.lock} Regenerar con Plan Rinde</a>`}
   </div>
   ${!canRegen ? `<div class="notice notice-info" style="margin-bottom:14px">${I.info}<div>Ya usaste tu diagnóstico gratis: podés verlo siempre. Para actualizarlo cuando cambies algo, <a href="/suscribirme">suscribite al Plan Rinde</a>.</div></div>` : ''}
+  ${alertsBox()}
+  ${campaignsNotice()}
   ${seasonBox(m)}
   <div class="diag-grid">
     <section class="summary-card" aria-labelledby="sum-h">
@@ -227,6 +233,103 @@ function topList(top) {
 
 function problemBlock(p, tag) {
   return `<div class="problem${tag ? ' problem-tag' : ''}">${tag ? `<span class="ptag">${esc(tag)}</span>` : ''}<b>${esc(p.label)}</b><span>${esc(p.detail)}${p.fix ? ` — ${esc(p.fix)}` : ''}</span>${topList(p.top)}</div>`;
+}
+
+
+// ─────────────────────────────── Campañas y publicidad ─────────────────────
+const PROMO_TYPE = { DEAL: 'Campaña tradicional', MARKETPLACE_CAMPAIGN: 'Campaña de Mercado Libre', SMART: 'Co-fondeada', PRICE_MATCHING: 'Precio competitivo', DOD: 'Oferta del día', LIGHTNING: 'Oferta relámpago', VOLUME: 'Descuento por cantidad', SELLER_CAMPAIGN: 'Campaña tuya', SELLER_COUPON_CAMPAIGN: 'Cupón', PRE_NEGOTIATED: 'Pre-negociada', UNHEALTHY_STOCK: 'Stock sin rotación', PRICE_DISCOUNT: 'Descuento' };
+const VERDICT_TAG = { conviene: 'tag-ok', conviene_si: 'tag-warn', no_conviene: 'tag-bad', no_ahora: 'tag-neutral', apagar: 'tag-bad', bajar: 'tag-warn', ok: 'tag-ok', subir: 'tag-ok' };
+const pctTxt = (n) => (n == null ? '—' : Math.round(n * 100) + ' %');
+
+function loadCampaigns(force = false) {
+  if (S.camp && !force) return;
+  if (DEMO || !S.paid) { S.camp = { ...getCampaignsDemo(), preview: !DEMO && !S.paid }; return; }
+  S.camp = { loading: true };
+  api(`/api/campaigns${force ? '?refresh=1' : ''}`, { timeout: 70000 }).then((d) => { S.camp = d; if (currentRoute() === 'campanas') render(); })
+    .catch((e) => { S.camp = { error: e.message }; if (currentRoute() === 'campanas') render(); });
+}
+
+function costInput(it, key) {
+  return `<form class="camp-cost" data-sku="${esc(it.sku || key)}"><label class="small" for="cc-${esc(key)}">Costo del producto</label><input id="cc-${esc(key)}" inputmode="decimal" placeholder="$ por unidad" value="${it.cost ?? ''}"><button class="btn btn-light btn-sm" type="submit">Guardar</button></form>`;
+}
+
+function promoCard(o, e, key) {
+  const it = o.item;
+  const hasCost = e.cost != null;
+  const quedan = (x) => fmtMoney(hasCost ? x.profit : x.beforeCost);
+  return `<article class="camp-card">
+    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : '<span class="tag tag-neutral">Sin veredicto: falta el costo</span>'}</div>
+    <div class="tiny muted">${esc(PROMO_TYPE[o.type] || o.type)} · ${esc(o.name)} · ${o.status === 'started' ? 'activa' : 'te la ofrecen'}${e.contribution ? ` · Mercado Libre aporta ${fmtMoney(e.contribution)} por venta` : ''}</div>
+    <div class="camp-grid">
+      <div><span>Precio</span><b>${fmtMoney(o.price_today)} → ${fmtMoney(o.promo_price)}</b></div>
+      <div><span>Te queda por venta${hasCost ? '' : ' (antes del costo)'}</span><b>${quedan(e.today)} → <span class="${(hasCost ? e.promo.profit : e.promo.beforeCost) < 0 ? 'neg' : ''}">${quedan(e.promo)}</span></b></div>
+      <div><span>Para ganar lo mismo que hoy</span><b>${e.moreSales == null ? (hasCost && e.promo.profit <= 0 ? 'no alcanza: perdés por venta' : hasCost ? '—' : 'cargá el costo para saberlo') : e.moreSales === 0 ? 'no hace falta vender más' : `necesitás vender un ${pctTxt(e.moreSales)} más`}</b></div>
+      <div><span>Cargos de MeLi con la promo</span><b>${fmtMoney(e.promo.charges.total)}</b><span class="tiny">${e.promo.charges.estimated ? 'tabla estimada' : 'tabla de MeLi'} · comisión ${fmtMoney(e.promo.charges.commission)}${e.promo.charges.fixed ? ` · fijo ${fmtMoney(e.promo.charges.fixed)}` : ''}${e.promo.charges.financing ? ` · cuotas ${fmtMoney(e.promo.charges.financing)}` : ''}${e.promo.charges.shipping ? ` · envío ${fmtMoney(e.promo.charges.shipping)}` : ''}${e.promo.charges.taxes ? ` · retenciones ${fmtMoney(e.promo.charges.taxes)}` : ''}</span></div>
+    </div>
+    ${e.crossings.length ? `<ul class="camp-notes">${e.crossings.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${e.note ? `<p class="small muted" style="margin:6px 0 0">${esc(e.note)}</p>` : ''}
+    ${costInput(it, key)}
+  </article>`;
+}
+
+function adsCard(a, e, key) {
+  const it = a.item;
+  return `<article class="camp-card">
+    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : '<span class="tag tag-neutral">Sin veredicto: falta el costo</span>'}</div>
+    <div class="tiny muted">${esc(a.campaign || 'Product Ads')} · últimos 30 días</div>
+    <div class="camp-grid">
+      <div><span>Gasto</span><b>${fmtMoney(a.cost)}</b></div>
+      <div><span>Ventas atribuidas</span><b>${fmtMoney(e.sales)}</b><span class="tiny">directas ${fmtMoney(a.direct_amount)} (${a.direct_units} u) · indirectas ${fmtMoney(a.indirect_amount)} (${a.indirect_units} u)</span></div>
+      <div><span>ACOS</span><b class="${e.losing ? 'neg' : ''}">${pctTxt(e.acos)}</b></div>
+      <div><span>ACOS máximo que aguanta${e.cost == null ? ' (antes del costo)' : ''}</span><b>${pctTxt(e.maxAcos)}</b></div>
+    </div>
+    ${e.losing ? `<p class="small" style="margin:6px 0 0"><b>Cada venta por publicidad pierde plata:</b> el ACOS es mayor que tu margen antes de publicidad.</p>` : ''}
+    ${e.note ? `<p class="small muted" style="margin:6px 0 0">${esc(e.note)}</p>` : ''}
+    ${costInput(it, key)}
+  </article>`;
+}
+
+function campaignsView() {
+  loadCampaigns();
+  const c = S.camp;
+  const head = `<div class="page-head"><div><h1>Campañas y publicidad</h1><div class="small muted">¿Te conviene entrar a una promo o seguir pagando publicidad? Rinde hace la cuenta con tus cargos reales. Solo recomienda: nunca activa ni cambia nada en Mercado Libre.</div></div>
+    ${!DEMO && S.paid && c && !c.loading ? `<button class="btn btn-light btn-sm" id="camp-refresh">${I.refresh} Volver a leer</button>` : ''}</div>`;
+  if (!c || c.loading) return head + `<div class="card">${I.loader.replace('<svg', '<svg class="spin"')} Leyendo tus campañas y publicidad de Mercado Libre…</div>`;
+  if (c.error) return head + `<div class="notice notice-bad">${I.alert}<div>${esc(c.error)}</div></div>`;
+  const ev = evaluateAll(c);
+  const sum = ev.summary;
+  const errs = (c.errors || []).filter((x) => x.status);
+  const body = `
+  ${sum.text ? `<div class="camp-sum">${I.chart}<div><b>${esc(sum.text.charAt(0).toUpperCase() + sum.text.slice(1))}.</b></div></div>` : ''}
+  ${errs.length ? `<div class="notice notice-warn small" style="margin-bottom:12px">${I.info}<div>Mercado Libre no nos dejó leer: ${errs.map((x) => `${esc(x.what)} (${x.status})`).join(', ')}. Lo que se pudo leer está abajo.</div></div>` : ''}
+  <h2 class="camp-h">Promociones</h2>
+  <div class="camp-list">${ev.promos.map(({ o, e }, i) => promoCard(o, e, 'p' + i)).join('') || '<div class="empty">No tenés campañas ofrecidas ni activas ahora.</div>'}</div>
+  <h2 class="camp-h">Publicidad (Product Ads)</h2>
+  <p class="small muted" style="margin:0 0 10px">Ventas atribuidas según Mercado Libre: algunas hubieran salido igual sin publicidad. Si el ACOS es mayor que tu margen antes de publicidad, cada venta por publicidad pierde plata.</p>
+  <div class="camp-list">${ev.ads.map(({ a, e }, i) => adsCard(a, e, 'a' + i)).join('') || `<div class="empty">${c.hasAdvertiser === false ? 'No usás Product Ads.' : 'Sin publicidad en los últimos 30 días.'}</div>`}</div>
+  <div style="margin-top:16px">${helpBox()}</div>`;
+  if (c.preview) {
+    return head + `<div class="locked-preview"><div class="lp-inner" aria-hidden="true">${body}</div>
+      <div class="lp-cta card"><h3>${I.lock} Disponible en Plan Rinde</h3><p class="small">Para cada promo que te ofrece Mercado Libre y cada publicidad que pagás, te decimos si te deja plata o te la come. Esto es un ejemplo.</p><a class="btn btn-primary btn-sm" href="/suscribirme">Ver el Plan Rinde</a></div></div>`;
+  }
+  return head + body;
+}
+
+function campaignsNotice() {
+  let sum = S.campaigns?.summary;
+  if (DEMO && !sum) { const d = getCampaignsDemo(); sum = evaluateAll(d).summary; }
+  if (!sum?.text) return '';
+  return `<div class="notice notice-info camp-notice">${I.tag}<div><b>Campañas y publicidad:</b> ${esc(sum.text)}. <a href="#/campanas">Ver el detalle</a></div></div>`;
+}
+
+function alertsBox() {
+  const list = S.unread || [];
+  if (!list.length) return '';
+  const top = list.slice(0, 3);
+  return `<section class="alerts-box" aria-label="Alertas nuevas">
+    <div class="ab-head">${I.bell}<b>Tenés ${list.length} alerta${list.length === 1 ? '' : 's'} nueva${list.length === 1 ? '' : 's'}</b><a class="btn btn-light btn-sm" href="#/alertas">Ver alertas</a></div>
+    <ul>${top.map((a) => `<li><span class="tag ${a.severity === 'bad' ? 'tag-bad' : 'tag-warn'}">${esc(ALERT_LABELS[a.kind] || a.kind)}</span> ${a.title ? `<b>${esc(a.title)}</b> · ` : ''}<span class="small">${esc(a.message)}</span></li>`).join('')}${list.length > top.length ? `<li class="small muted">y ${list.length - top.length} más</li>` : ''}</ul>
+  </section>`;
 }
 
 function scoreBadge(sc) {
@@ -454,17 +557,17 @@ function profitView() {
 
 // ─────────────────────────────── Alertas ───────────────────────────────────
 function alertsView() {
-  if (!DEMO && !S.paid) return `<div class="page-head"><h1>Alertas</h1></div>${lockCard('Las alertas por email')}`;
+  if (!DEMO && !S.paid) return `<div class="page-head"><h1>Alertas</h1></div>${lockCard(COPY.alertsLock)}`;
   const alerts = S.model.alerts;
   const s = S.user || {};
   return `
-  <div class="page-head"><div><h1>Alertas</h1><div class="small muted">Te avisamos por email solo cuando aparece algo nuevo.</div></div></div>
+  <div class="page-head"><div><h1>Alertas</h1><div class="small muted">${EMAIL_ENABLED ? 'Te avisamos por email solo cuando aparece algo nuevo.' : 'Las revisamos todos los días y te las mostramos acá, en tu panel. Las nuevas aparecen marcadas.'}</div></div></div>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start">
     <section class="card">
       <h3>${I.bell} Alertas activas (${alerts.length})</h3>
-      <div class="grid" style="gap:8px">${alerts.map((a) => `<div class="notice ${a.severity === 'bad' ? 'notice-bad' : 'notice-warn'}" style="padding:10px 12px">${a.severity === 'bad' ? I.alert : I.info}<div><span class="tag ${a.severity === 'bad' ? 'tag-bad' : 'tag-warn'}">${a.severity === 'bad' ? 'Urgente' : 'Atención'} · ${esc(ALERT_LABELS[a.kind] || a.kind)}</span>${a.title ? `<div style="font-weight:600;margin-top:4px">${esc(a.title)}</div>` : ''}<div class="small">${esc(a.message)}</div></div></div>`).join('') || `<div class="notice notice-ok">${I.checkCircle}<div>No hay alertas. Todo en orden.</div></div>`}</div>
+      <div class="grid" style="gap:8px">${alerts.map((a) => `<div class="notice ${a.severity === 'bad' ? 'notice-bad' : 'notice-warn'}" style="padding:10px 12px">${a.severity === 'bad' ? I.alert : I.info}<div>${(S.seenUnread || []).includes(a.key) ? '<span class="tag tag-accent">Nueva</span> ' : ''}<span class="tag ${a.severity === 'bad' ? 'tag-bad' : 'tag-warn'}">${a.severity === 'bad' ? 'Urgente' : 'Atención'} · ${esc(ALERT_LABELS[a.kind] || a.kind)}</span>${a.title ? `<div style="font-weight:600;margin-top:4px">${esc(a.title)}</div>` : ''}<div class="small">${esc(a.message)}</div></div></div>`).join('') || `<div class="notice notice-ok">${I.checkCircle}<div>No hay alertas. Todo en orden.</div></div>`}</div>
     </section>
-    <section class="card">
+    ${EMAIL_ENABLED ? `    <section class="card">
       <h3>${I.mail} Configuración de email</h3>
       <form id="alert-form">
         <div class="field"><label for="al-email">Email para alertas</label><input id="al-email" type="email" autocomplete="email" value="${esc(s.alert_email || '')}" placeholder="tu@email.com" required></div>
@@ -473,7 +576,12 @@ function alertsView() {
         <div class="help-links" style="margin-top:12px"><button class="btn btn-primary btn-sm" type="submit">Guardar</button><button class="btn btn-light btn-sm" type="button" id="al-test">Mandarme un email de prueba</button></div>
       </form>
       <p class="small" style="margin-top:12px">Vista previa: <a href="/api/email-preview?type=daily" target="_blank" rel="noopener">alerta diaria</a> · <a href="/api/email-preview?type=weekly" target="_blank" rel="noopener">resumen semanal</a></p>
-    </section>
+    </section>` : `<section class="card">
+      <h3>${I.mail} Alertas por email</h3>
+      <div class="notice notice-info">${I.info}<div><b>Pronto: alertas por email.</b> Mientras tanto, las alertas y el resumen los ves acá, en tu panel, y en la pestaña Alertas aparece un número cuando hay nuevas.</div></div>
+      <div class="toggle" style="opacity:.55"><label for="al-daily-off"><b>Alertas diarias por email</b><div class="small muted">Pronto</div></label><input id="al-daily-off" type="checkbox" disabled></div>
+      <div class="toggle" style="opacity:.55"><label for="al-weekly-off"><b>Resumen semanal (lunes)</b><div class="small muted">Pronto</div></label><input id="al-weekly-off" type="checkbox" disabled></div>
+    </section>`}
   </div>
   ${S.history?.length ? `<h2 style="margin:22px 0 8px;font-size:1.2rem">Historial</h2><div class="card"><ul class="small" style="margin:0;padding-left:18px">${S.history.map((h) => `<li>${new Date(h.created_at).toLocaleDateString('es-AR')} · ${esc(ALERT_LABELS[h.kind] || h.kind)} · ${esc(h.title || '')} ${h.resolved_at ? '<span class="tag tag-ok">resuelta</span>' : ''}</li>`).join('')}</ul></div>` : ''}
   <div style="margin-top:16px">${helpBox()}</div>`;
@@ -627,6 +735,24 @@ function bind(route) {
     runConnecting(true);
   });
 
+  if (route === 'campanas') {
+    document.getElementById('camp-refresh')?.addEventListener('click', () => { loadCampaigns(true); render(); });
+    document.querySelectorAll('.camp-cost').forEach((f) => f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const sku = f.dataset.sku;
+      const raw = f.querySelector('input').value.replace(/[^0-9.,]/g, '').replace(/\./g, '').replace(',', '.');
+      const val = raw === '' ? null : Number(raw);
+      if (val != null && !(val >= 0)) return toast('Poné un número.');
+      if (S.camp?.preview) return toast('Disponible en Plan Rinde.');
+      if (!DEMO) {
+        try { await api('/api/profit', { method: 'POST', body: { type: 'costs', costs: [{ sku, purchase: val }] } }); } catch (er) { return toast(er.message); }
+      }
+      for (const x of [...(S.camp.offers || []), ...(S.camp.ads || [])]) if ((x.item?.sku || '') === sku) x.item.cost = val;
+      toast(val == null ? 'Costo borrado.' : 'Costo guardado. Recalculamos.');
+      render();
+    }));
+  }
+
   if (route === 'publicaciones') {
     const L = S.list;
     const q = document.getElementById('lq');
@@ -662,6 +788,13 @@ function bind(route) {
     document.getElementById('file')?.addEventListener('change', uploadCosts);
     document.getElementById('save-ads')?.addEventListener('click', saveAds);
   }
+  if (route === 'alertas' && (DEMO || S.paid) && (S.unread || []).length) {
+    // Se marcan como leídas al abrir la pestaña; en esta visita siguen marcadas como "Nueva".
+    S.seenUnread = S.unread.map((x) => x.key);
+    S.unread = [];
+    if (!DEMO) api('/api/settings', { method: 'POST', body: { action: 'alerts_read' } }).catch(() => {});
+    setTimeout(render, 0);
+  }
   if (route === 'alertas' && (DEMO || S.paid)) {
     document.getElementById('alert-form')?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -692,6 +825,10 @@ async function applyCosts(list) {
       else S.demoData.costs[c.sku] = { purchase: p, replacement: r };
     }
     S.model = buildModel(S.demoData);
+    { // Demo: el plan de cada publicación suma lo que dicen Campañas y publicidad.
+      const acts = actionsByItem(evaluateAll(getCampaignsDemo()));
+      for (const r of S.model.rows) if (acts[r.it.id] && r.plan) r.plan = { ...r.plan, actions: [...acts[r.it.id], ...(r.plan.actions || [])].slice(0, 6) };
+    }
     S.summary = buildRuleSummary(S.model);
     return true;
   }
@@ -788,6 +925,8 @@ async function loadReal() {
   S.syncedAt = d.syncedAt;
   S.settings = d.settings || {};
   S.productAds = d.productAds;
+  S.unread = d.unreadAlerts || [];
+  S.campaigns = d.campaigns || null;
   if (S.paid) api('/api/settings').then((x) => { S.history = x.history; if (currentRoute() === 'alertas') render(); }).catch(() => {});
   render();
 }
@@ -811,6 +950,7 @@ async function boot() {
     }
     S.model = buildModel(S.demoData);
     S.summary = buildRuleSummary(S.model);
+    S.unread = S.model.alerts.slice(0, 4).map((x) => ({ ...x, created_at: new Date().toISOString() })); // demo: algunas sin leer
     S.user = { nickname: S.demoData.seller.nickname, ...S.demoData.settings, can_regenerate: true };
     S.paid = true;
     S.syncedAt = S.demoData.syncedAt;

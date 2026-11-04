@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { db } from './db.js';
 import { AppError } from './http.js';
 import { sendEmail, billingEmail } from './email.js';
+import { EMAIL_ENABLED } from '../../shared/config.js';
 import {
   mergeBilling, priceOf, makeRef, parseRef, INTERVAL_LABEL,
   onSubscriptionAuthorized, onPaymentApproved, onPaymentFailed, onSubscriptionCanceled,
@@ -116,7 +117,7 @@ async function patchUser(u, patch) {
 
 async function notify(u, kind, extra = {}) {
   const to = u.billing_email || u.alert_email || u.email;
-  if (!to || !process.env.RESEND_API_KEY) return false;
+  if (!EMAIL_ENABLED || !to || !process.env.RESEND_API_KEY) return false; // sin dominio: los avisos de cobro se ven en el panel
   try {
     const cfg = await getBillingConfig();
     await sendEmail({ to, ...billingEmail(kind, { user: u, cfg, appUrl: process.env.RINDE_APP_URL || '', ...extra }) });

@@ -210,7 +210,7 @@ details.faq p { color: var(--ink-2); max-width: 62ch; }
 
 /* ───────── App ───────── */
 .app-shell { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); min-height: 100vh; }
-.tabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.tabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: grid; grid-template-columns: repeat(5, 1fr); background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 .tabs a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 4px 10px; color: var(--muted); text-decoration: none; font-size: .76rem; font-weight: 600; }
 .tabs a svg { width: 22px; height: 22px; }
 .tabs a[aria-current='page'] { color: var(--accent); }
@@ -452,3 +452,35 @@ a.chip { text-decoration: none; }
 .cards-test { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
 .cards-test li { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .cards-test .num { font-size: 1rem; letter-spacing: .02em; }
+
+/* Alertas en el panel */
+.badge-count { display: inline-flex; min-width: 18px; height: 18px; padding: 0 5px; align-items: center; justify-content: center; border-radius: 999px; background: var(--bad); color: #fff; font: 700 .7rem/1 var(--font-num); vertical-align: 1px; }
+.alerts-box { background: var(--surface); border: 1px solid var(--line-strong); border-left: 4px solid var(--bad); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 14px; }
+.alerts-box .ab-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.alerts-box .ab-head svg { width: 20px; height: 20px; color: var(--bad); }
+.alerts-box .ab-head .btn { margin-left: auto; }
+.alerts-box ul { margin: 8px 0 0; padding-left: 0; list-style: none; display: grid; gap: 6px; }
+.alerts-box li { overflow-wrap: anywhere; }
+
+/* Campañas y publicidad */
+.camp-sum { display: flex; gap: 10px; align-items: flex-start; background: var(--panel); color: var(--panel-ink); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 14px; }
+.camp-sum svg { width: 20px; height: 20px; flex: none; margin-top: 2px; color: var(--mark); }
+.camp-h { font-size: 1.2rem; margin: 18px 0 8px; }
+.camp-list { display: grid; gap: 10px; }
+.camp-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; display: grid; gap: 6px; }
+.camp-top { display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+.camp-title { font-weight: 600; flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.camp-title a { color: var(--ink); }
+.camp-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); margin-top: 4px; }
+.camp-grid > div { display: grid; gap: 2px; background: var(--sunken, var(--paper)); border-radius: 6px; padding: 8px 10px; }
+.camp-grid > div > span { font-size: .78rem; color: var(--muted); }
+.camp-grid b { font: 600 .95rem var(--font-num); overflow-wrap: anywhere; }
+.camp-grid b .neg, .camp-grid b.neg { color: var(--bad); }
+.camp-notes { margin: 2px 0 0; padding-left: 18px; font-size: .85rem; color: var(--ink-2); }
+.camp-cost { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+.camp-cost input { width: 130px; min-height: 36px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 8px; font: .85rem var(--font-num); background: var(--surface); color: var(--ink); }
+.camp-notice { margin-bottom: 14px; }
+.locked-preview { position: relative; }
+.locked-preview .lp-inner { filter: blur(3px); opacity: .55; pointer-events: none; user-select: none; max-height: 900px; overflow: hidden; }
+.locked-preview .lp-cta { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); width: min(92%, 420px); text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+@media (max-width: 420px) { .tabs a span { font-size: .68rem; } }

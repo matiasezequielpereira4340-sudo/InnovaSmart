@@ -12,6 +12,7 @@ import { sha256 } from './_lib/crypto.js';
 import { getBillingConfig, saveBillingConfig, activateTransfer } from './_lib/mp.js';
 import { mergeBilling } from '../shared/plans.js';
 import { sendEmail, dailyAlertEmail, weeklyEmail } from './_lib/email.js';
+import { probeCampaignsAccess } from './_lib/campaigns-meli.js';
 import { appUrl } from './_lib/http.js';
 
 const yearStartAR = () => new Date(`${new Date(Date.now() - 3 * 3600000).getUTCFullYear()}-01-01T00:00:00-03:00`).toISOString();
@@ -239,6 +240,16 @@ export default handler(async (req, res) => {
       const summary = { ...buildRuleSummary(m), regenerated_by_admin: true };
       await db.insert('rinde_diagnoses', [{ user_id: user.id, input_hash: 'admin-' + Date.now(), summary, tokens_used: 0, sync_finished_at: job.finished_at, counts: m.groupCounts }]);
       return json(res, 200, { done: true, sync: progressOf(job), headline: summary.headline, revenue: m.revenue, lostTotal: m.lostTotal, sanity: m.sanity });
+    }
+    if (body.action === 'probe_campaigns') {
+      // Paso 0 de Campañas: qué deja leer MeLi (SOLO LECTURA). Guarda estado y nombres de campos, no datos.
+      const user = await db.one('rinde_users', { id: body.user_id });
+      if (!user) throw new AppError(404, 'No existe ese usuario.');
+      const token = await getAccessToken(user.id, req);
+      const sample = (await db.select('rinde_items', { user_id: user.id }, { columns: 'data', limit: 50 })).map((r) => r.data).find((it) => it.status === 'active') || null;
+      const out = await probeCampaignsAccess(token, user.meli_user_id, sample);
+      await db.upsert('rinde_settings', [{ key: 'campaigns_probe', value: { ...out, user: user.nickname }, updated_at: out.at }], 'key');
+      return json(res, 200, out);
     }
     if (body.action === 'send_examples') {
       // Manda un ejemplo REAL del email diario y del semanal con los datos guardados de una cuenta.

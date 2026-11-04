@@ -15,6 +15,7 @@ let selUser = null;
 let run = null;
 let busy = false;
 let valError = '';
+let probe = null;
 let acct = null; // facturación real + estimado de la cuenta elegida
 let acctBusy = '';
 let acctMsg = '';
@@ -384,6 +385,8 @@ function accountCard() {
       <button class="btn btn-light btn-sm" id="acc-stored" ${acctBusy ? 'disabled' : ''}>${I.refresh} Regenerar con datos guardados</button>
       <button class="btn btn-light btn-sm" id="acc-regen" ${acctBusy ? 'disabled' : ''}>${acctBusy === 'regen' ? `${I.loader.replace('<svg', '<svg class="spin"')} Releyendo la cuenta…` : `${I.refresh} Releer y regenerar diagnóstico (no gasta el gratis)`}</button>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-light btn-sm" id="probe-c" type="button" ${acctBusy ? 'disabled' : ''}>${I.search} Probar acceso a campañas y publicidad</button><span class="tiny muted">Solo lectura: no cambia nada en Mercado Libre.</span></div>
+    ${probe ? `<div class="table-wrap"><table class="data"><thead><tr><th>Lectura</th><th>Respuesta</th><th>Detalle</th></tr></thead><tbody>${probe.rows.map((r) => `<tr><td>${esc(r.name)}<div class="tiny muted num">${esc(r.path)}</div></td><td>${r.status == null ? '<span class="tag tag-neutral">no probado</span>' : r.status === 200 ? `<span class="tag tag-ok">${I.check} 200${r.count === 0 ? ' vacío' : r.count != null ? ` · ${r.count}` : ''}</span>` : `<span class="tag tag-bad">${I.x} ${r.status}</span>`}</td><td class="small">${esc([r.message, r.types?.length ? 'tipos: ' + r.types.join(', ') : '', r.boost != null ? (r.boost ? 'trae campos de aporte de MeLi/boost' : 'sin campos de boost') : '', r.fields?.length ? 'campos: ' + r.fields.join(', ') : '', r.advertiser === false ? 'no es anunciante de Product Ads' : ''].filter(Boolean).join(' · ') || '—')}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <form id="ex-f" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
       <div class="field" style="flex:1 1 220px;margin:0"><label for="ex-to">Mandarme un ejemplo real del email diario y del semanal a</label><input id="ex-to" type="email" required value="${esc(users.find((u) => u.id === selUser)?.alert_email || '')}"></div>
       <button class="btn btn-light btn-sm" type="submit" ${acctBusy ? 'disabled' : ''}>${I.bell} Mandar ejemplos</button>
@@ -491,6 +494,12 @@ function validationView() {
   document.getElementById('acc-load')?.addEventListener('click', loadAccount);
   document.getElementById('acc-regen')?.addEventListener('click', regenAccount);
   document.getElementById('acc-stored')?.addEventListener('click', regenStored);
+  document.getElementById('probe-c')?.addEventListener('click', async () => {
+    if (DEMO) { acctMsg = 'En el modo ejemplo no se consulta Mercado Libre.'; return render(); }
+    acctBusy = 'probe'; acctMsg = 'Probando acceso a campañas y publicidad (solo lectura)…'; render();
+    try { probe = await call('POST', { action: 'probe_campaigns', user_id: selUser }); acctMsg = 'Listo: abajo ves qué respondió Mercado Libre en cada lectura.'; } catch (er) { acctMsg = er.message; }
+    acctBusy = ''; render();
+  });
   document.getElementById('ex-f')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (DEMO) { acctMsg = 'En el modo ejemplo no se mandan emails.'; return render(); }

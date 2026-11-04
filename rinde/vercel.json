@@ -31,6 +31,9 @@
     },
     "api/admin.js": {
       "maxDuration": 60
+    },
+    "api/campaigns.js": {
+      "maxDuration": 60
     }
   },
   "crons": [

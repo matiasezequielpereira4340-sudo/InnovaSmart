@@ -46,6 +46,15 @@ export const THRESHOLDS = {
 // y competencia (la búsqueda pública /sites/MLA/search está cerrada para apps). Si MeLi habilita el permiso, poner true.
 export const FEATURES = { quality: false, competition: false };
 
+// Tabla ESTIMADA de cargos de Mercado Libre (Argentina) para simular un precio nuevo cuando no se puede
+// leer la oficial (/sites/MLA/listing_prices). Revisar y actualizar si MeLi cambia sus tarifas.
+export const FEE_SCHEDULE = {
+  commission: { gold_special: 0.135, gold_pro: 0.135, free: 0 },
+  financing: { gold_special: 0, gold_pro: 0.115, free: 0 }, // costo de cuotas sin interés (Premium)
+  // Cargo fijo por unidad debajo de cada umbral de precio.
+  fixedTiers: [{ below: 15000, fee: 1115 }, { below: 25000, fee: 2300 }, { below: 33000, fee: 2810 }],
+};
+
 export const LIMITS = {
   // Tope de tokens de salida de IA por diagnóstico completo de una cuenta.
   AI_MAX_OUTPUT_TOKENS_PER_DIAGNOSIS: 40000,
@@ -89,6 +98,18 @@ export const GROUPS = {
 export const SEASONS = {
   invierno: { months: [5, 6, 7, 8], pre: [4], prepare: 'marzo/abril', words: /invierno|polar|kigurumi|frazada|estufa|calefactor|bufanda|chiporro|corderito|abrigo|campera|guantes t[eé]rmicos|pantuflas/i },
   verano: { months: [11, 12, 1, 2], pre: [10], prepare: 'agosto/septiembre', words: /verano|pileta|piscina|inflable|malla|bikini|protector solar|pistola de agua|ventilador|sombrilla|reposera|ojotas/i },
+};
+
+// ── EMAILS ──
+// Interruptor único: false mientras Resend no tenga un dominio verificado (sin dominio, Resend solo le
+// entrega al dueño de la cuenta). En false: el cron guarda las alertas en el panel y NO manda emails a
+// clientes, y los textos dicen "alertas en tu panel". Al verificar el dominio: poner true y cargar
+// RINDE_EMAIL_FROM en Vercel (ver Admin > Conexiones > Resend).
+export const EMAIL_ENABLED = false;
+export const COPY = {
+  alertsFeature: EMAIL_ENABLED ? 'Alertas diarias por email y resumen de los lunes' : 'Alertas diarias en tu panel',
+  alertsLock: EMAIL_ENABLED ? 'Las alertas por email' : 'Las alertas',
+  subscribedNotice: EMAIL_ENABLED ? 'En unos minutos se activa tu Plan Rinde y te llega un email.' : 'En unos minutos se activa tu Plan Rinde: lo ves en tu panel.',
 };
 
 export const PLAN_PRICE_ARS = 15000;

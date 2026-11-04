@@ -2,6 +2,7 @@
 import { I, hydrateIcons } from './icons.js';
 import { fmtMoney } from '../shared/rules.js';
 import { DEFAULT_BILLING } from '../shared/plans.js';
+import { COPY } from '../shared/config.js';
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.has('demo');
@@ -50,10 +51,10 @@ function render() {
   root.innerHTML = `
   ${DEMO ? `<div class="notice notice-info" style="margin-bottom:14px">${I.info}<div>Estás viendo un <b>ejemplo</b>. Los botones no cobran nada.</div></div>` : ''}
   ${cfg.mp_test ? `<div class="notice notice-warn" style="margin-bottom:14px">${I.alert}<div><b>Mercado Pago en modo prueba.</b> Usá un usuario y una tarjeta de prueba: no se cobra plata real.</div></div>` : ''}
-  ${done ? `<div class="notice notice-ok" style="margin-bottom:16px" role="status">${I.checkCircle}<div><b>¡Listo!</b> Mercado Pago está confirmando tu suscripción. En unos minutos se activa tu Plan Rinde y te llega un email. <a href="/app">Ir a mi cuenta</a></div></div>` : ''}
+  ${done ? `<div class="notice notice-ok" style="margin-bottom:16px" role="status">${I.checkCircle}<div><b>¡Listo!</b> Mercado Pago está confirmando tu suscripción. ${COPY.subscribedNotice} <a href="/app">Ir a mi cuenta</a></div></div>` : ''}
   <span class="label">Plan Rinde</span>
   <h1 style="font-size:clamp(1.9rem,6vw,2.8rem);margin:8px 0 6px">Elegí cómo pagar</h1>
-  <p class="lead" style="margin-bottom:18px">Diagnóstico ilimitado, rentabilidad real por producto y alertas diarias. <b>${cfg.trial_days} días gratis</b> con tarjeta. Cancelás cuando quieras.</p>
+  <p class="lead" style="margin-bottom:18px">Diagnóstico ilimitado, rentabilidad real por producto y ${COPY.alertsFeature.toLowerCase()}. <b>${cfg.trial_days} días gratis</b> con tarjeta. Cancelás cuando quieras.</p>
   ${me?.status && STATUS_TEXT[me.status] ? `<div class="notice ${me.status === 'past_due' || me.status === 'lapsed' ? 'notice-bad' : 'notice-ok'}" style="margin-bottom:16px">${me.status === 'past_due' || me.status === 'lapsed' ? I.alert : I.checkCircle}<div>${esc(STATUS_TEXT[me.status](me))}</div></div>` : ''}
 
   <div class="prices two" style="margin-bottom:18px" role="radiogroup" aria-label="Plan">

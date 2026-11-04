@@ -127,7 +127,7 @@
             <li><i data-i="check"></i> Rentabilidad real por producto y por venta</li>
             <li><i data-i="check"></i> Margen a costo de reposición</li>
             <li><i data-i="check"></i> Precio mínimo sin pérdida y precio sugerido</li>
-            <li><i data-i="check"></i> Alertas diarias por email y resumen de los lunes</li>
+            <li><i data-i="check"></i> <span data-copy="alertsFeature">Alertas diarias en tu panel</span></li>
           </ul>
           <a class="btn btn-primary btn-block" href="/suscribirme?plan=monthly">Probar <span data-trial>3</span> días gratis</a>
           <p class="tiny muted" style="margin:10px 0 0">Con tarjeta por Mercado Pago. Cancelás cuando quieras. También podés <a href="/suscribirme?metodo=transferencia">pagar por transferencia</a>.</p>
@@ -184,8 +184,9 @@
 
 <script type="module">
   import { hydrateIcons } from '/assets/icons.js';
-  import { waLink } from '/shared/config.js';
+  import { waLink, COPY } from '/shared/config.js';
   hydrateIcons();
+  document.querySelectorAll('[data-copy]').forEach((el) => { if (COPY[el.dataset.copy]) el.textContent = COPY[el.dataset.copy]; });
   document.querySelectorAll('[data-wa]').forEach((a) => { a.href = waLink(a.dataset.wa); a.target = '_blank'; a.rel = 'noopener'; });
   fetch('/api/billing').then((r) => (r.ok ? r.json() : null)).then((c) => {
     if (!c) return;

@@ -2,6 +2,8 @@
 // 1) Recalcula cada cuenta paga y manda email SOLO si hay alertas nuevas.
 // 2) Los lunes, además, manda el resumen semanal.
 import { handler, json, appUrl, AppError, query } from './_lib/http.js';
+import { syncAlerts } from './_lib/alerts.js';
+import { EMAIL_ENABLED } from '../shared/config.js';
 import { connectionUsable } from './_lib/meli.js';
 import { safeEqual } from './_lib/crypto.js';
 import { db } from './_lib/db.js';
@@ -64,23 +66,15 @@ export default handler(async (req, res) => {
       const fresh = await db.one('rinde_users', { id: u.id });
       const { data } = await loadAccount(u.id);
       const model = buildModel(data);
-      const open = await db.select('rinde_alerts', { user_id: u.id, resolved_at: null });
-      const openKeys = new Set(open.map((a) => a.key));
-      const nowKeys = new Set(model.alerts.map((a) => a.key));
-      const nuevas = model.alerts.filter((a) => !openKeys.has(a.key));
-      const resueltas = open.filter((a) => !nowKeys.has(a.key)).map((a) => a.id);
-      if (resueltas.length) await db.update('rinde_alerts', { user_id: u.id, id: resueltas }, { resolved_at: new Date().toISOString() });
-      if (nuevas.length) {
-        await db.insert('rinde_alerts', nuevas.map((a) => ({ user_id: u.id, key: a.key, kind: a.kind, item_id: a.item_id, title: a.title, message: a.message, severity: a.severity })));
-      }
+      const { nuevas } = await syncAlerts(u.id, model); // quedan en el panel como no leídas
       let sent = false;
-      if (nuevas.length && fresh.alerts_enabled !== false && fresh.alert_email) {
+      if (EMAIL_ENABLED && nuevas.length && fresh.alerts_enabled !== false && fresh.alert_email) {
         await sendEmail({ to: fresh.alert_email, ...dailyAlertEmail({ nickname: fresh.nickname, alerts: nuevas, appUrl: base }) });
         await db.update('rinde_alerts', { user_id: u.id, key: nuevas.map((a) => a.key), resolved_at: null }, { emailed_at: new Date().toISOString() });
         sent = true;
       }
       const lastWeekly = fresh.settings?.last_weekly_at ? new Date(fresh.settings.last_weekly_at).getTime() : 0;
-      if (isMonday && fresh.weekly_enabled !== false && fresh.alert_email && Date.now() - lastWeekly > 5 * 86400000) {
+      if (EMAIL_ENABLED && isMonday && fresh.weekly_enabled !== false && fresh.alert_email && Date.now() - lastWeekly > 5 * 86400000) {
         const diag = await db.one('rinde_diagnoses', { user_id: u.id }, { order: 'created_at.desc' });
         await sendEmail({ to: fresh.alert_email, ...weeklyEmail({ nickname: fresh.nickname, model, summary: { ...(diag?.summary || {}), ...buildRuleSummary(model), first: diag?.summary?.first || buildRuleSummary(model).first }, appUrl: base }) });
         await db.update('rinde_users', { id: u.id }, { settings: { ...(fresh.settings || {}), last_weekly_at: new Date().toISOString() } });

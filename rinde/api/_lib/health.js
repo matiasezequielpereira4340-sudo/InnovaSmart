@@ -50,7 +50,8 @@ async function checkResend() {
   const body = await r.json().catch(() => ({}));
   if (r.ok) {
     const verified = (body.data || []).filter((d) => d.status === 'verified').length;
-    return { ok: true, detail: verified ? `Clave válida · ${verified} dominio(s) verificado(s).` : 'Clave válida · sin dominio verificado: los emails solo te llegan a vos.' };
+    const dns = ' Cuando tengas dominio: agregalo en resend.com > Domains y cargá en tu DNS: MX "send" → feedback-smtp.us-east-1.amazonses.com (prioridad 10); TXT "send" → v=spf1 include:amazonses.com ~all; TXT "resend._domainkey" → la clave DKIM que te da Resend; opcional TXT "_dmarc" → v=DMARC1; p=none;. Después: RINDE_EMAIL_FROM en Vercel (ej. Rinde <alertas@tudominio.com>) y EMAIL_ENABLED = true en shared/config.js.';
+    return { ok: true, detail: verified ? `Clave válida · ${verified} dominio(s) verificado(s).${process.env.RINDE_EMAIL_FROM ? '' : ' Falta RINDE_EMAIL_FROM.'}` : 'Clave válida · sin dominio verificado: los emails solo te llegan a vos, por eso a los clientes las alertas les llegan al panel.' + dns };
   }
   if (r.status === 401 && /restricted/i.test(JSON.stringify(body))) return { ok: true, detail: 'Clave válida (de solo envío).' };
   return { ok: false, detail: r.status === 401 || r.status === 403 ? 'La clave no es válida.' : `Resend respondió ${r.status}.` };

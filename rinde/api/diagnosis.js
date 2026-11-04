@@ -10,6 +10,7 @@ import { generatePlans, generateSummary, planHash, claimsFakeLoss } from './_lib
 import { LIMITS } from '../shared/config.js';
 import { db } from './_lib/db.js';
 import { sha256 } from './_lib/crypto.js';
+import { syncAlerts, unreadAlerts } from './_lib/alerts.js';
 
 export default handler(async (req, res) => {
   const u = await currentUser(req);
@@ -30,6 +31,22 @@ export default handler(async (req, res) => {
       : rule;
     for (const r of model.rows) if (r.plan?.source === 'ia' && claimsFakeLoss(r.plan.headline, r.profit)) r.plan = { ...r.plan, headline: buildRulePlanHeadline(r) };
     const sales90 = model.rows.reduce((t, r) => t + (r.it.sales90 || 0), 0);
+    // Campañas y publicidad (de la caché de /api/campaigns): aviso corto y acciones en el plan de cada publicación.
+    let campaigns = null;
+    if (paid) {
+      try {
+        const c = (await db.one('rinde_settings', { key: `campaigns:${u.id}` }))?.value;
+        if (c) {
+          campaigns = { summary: c.summary, fetched_at: c.fetched_at };
+          for (const r of model.rows) {
+            const extra = c.actions?.[r.it.id];
+            if (extra?.length && r.plan) r.plan = { ...r.plan, actions: [...extra, ...(r.plan.actions || [])].slice(0, 6) };
+          }
+        }
+      } catch (e) { console.error('[rinde][campañas]', e.message); }
+    }
+    let unread = [];
+    if (paid) { try { await syncAlerts(u.id, model); unread = await unreadAlerts(u.id); } catch (e) { console.error('[rinde][alertas]', e.message); } }
     return json(res, 200, {
       user: publicUser(u),
       paid,
@@ -40,6 +57,8 @@ export default handler(async (req, res) => {
       model: { ...model, rows: model.rows, kpis: paid ? model.kpis : null, alerts: paid ? model.alerts : [] },
       settings: data.settings,
       productAds: !!data.productAds,
+      unreadAlerts: unread,
+      campaigns,
     });
   }
 
