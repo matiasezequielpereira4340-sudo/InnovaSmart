@@ -290,11 +290,12 @@ function accountCard() {
     <h2 id="acc-h" style="font-size:1.15rem;margin:0">Facturación real y diagnóstico de esta cuenta</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-light btn-sm" id="acc-load" ${acctBusy ? 'disabled' : ''}>${I.chart} Ver facturación real</button>
-      ${users.find((u) => u.id === selUser && !u.connected) ? `<button class="btn btn-light btn-sm" id="acc-public" ${acctBusy ? 'disabled' : ''}>${I.refresh} Releer datos públicos de publicaciones (sin reconectar)</button>` : ''}
+
       <button class="btn btn-light btn-sm" id="acc-stored" ${acctBusy ? 'disabled' : ''}>${I.refresh} Regenerar con datos guardados</button>
       <button class="btn btn-light btn-sm" id="acc-regen" ${acctBusy ? 'disabled' : ''}>${acctBusy === 'regen' ? `${I.loader.replace('<svg', '<svg class="spin"')} Releyendo la cuenta…` : `${I.refresh} Releer y regenerar diagnóstico (no gasta el gratis)`}</button>
     </div>
     ${acctMsg ? `<div class="small" role="status">${esc(acctMsg)}</div>` : ''}
+    ${users.find((u) => u.id === selUser && !u.connected) ? `<div class="notice notice-info small">${I.info}<div>Esta cuenta está desconectada: se ve con los datos guardados. Para la nota completa, esta cuenta tiene que volver a conectar.</div></div>` : ''}
     ${a?.ready ? `<div class="kpis">
       <div class="kpi"><div class="k-label">Facturación 30 días</div><div class="k-value num">${money2(a.revenue.d30)}</div><div class="k-sub">${a.revenue.orders30 ?? '—'} ventas pagadas</div></div>
       <div class="kpi"><div class="k-label">Facturación 90 días</div><div class="k-value num">${money2(a.revenue.d90)}</div><div class="k-sub">${a.has180 ? 'órdenes pagadas' : 'falta releer la cuenta'}</div></div>
@@ -304,7 +305,7 @@ function accountCard() {
     ${a.revenue.cancelled30 != null ? `<div class="small">Últimos 30 días: ${a.revenue.orders30} ventas cobradas${a.revenue.cancelled30 ? ` + ${a.revenue.cancelled30} cancelada(s) por ${fmtMoney(a.revenue.cancelled30_amount)} (Mercado Libre las suma en "ventas brutas"; Rinde no las cuenta como facturación)` : ' · sin canceladas'}.${a.revenue.statuses30 ? ` Estados: ${Object.entries(a.revenue.statuses30).map(([k, v]) => `${esc(k)} ${v}`).join(', ')}.` : ''}</div>` : '<div class="small muted">Para ver canceladas y meses, tocá "Releer y regenerar".</div>'}
     ${a.revenue.months ? `<div class="table-wrap"><table class="data"><thead><tr><th>Mes (hora AR)</th><th>Ventas cobradas</th><th>Facturación</th><th>Canceladas</th></tr></thead><tbody>${Object.entries(a.revenue.months).sort((x, y) => y[0].localeCompare(x[0])).map(([k, v]) => `<tr><td class="num">${esc(k)}</td><td class="num">${v.orders}</td><td class="num">${fmtMoney(v.amount)}</td><td class="num">${v.cancelled ? `${v.cancelled} · ${fmtMoney(v.cancelled_amount)}` : '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}
     ${a.counts ? `<div class="small">Tarjetas: ${Object.entries(a.counts).filter(([, v]) => v).map(([k, v]) => `${esc(k)} ${v}`).join(' · ')} · total ${Object.values(a.counts).reduce((x, y) => x + y, 0)}</div>` : ''}
-    ${a.scores ? `<div class="small"><b>Nota promedio: ${a.scores.avg ?? '—'}/100</b>${a.scores.withAttrs < a.scores.total ? ` · atributos y descripciones leídos en ${a.scores.withAttrs} de ${a.scores.total} (tocá "Releer y regenerar" para completar)` : ''}. Peores: ${a.scores.worst.map((w) => `${esc(w.title)} (${w.score}): ${w.improvements.map(esc).join(' · ')}`).join(' — ')}</div>` : ''}
+    ${a.scores ? `<div class="small"><b>Nota promedio: ${a.scores.avg ?? '—'}/100${a.scores.provisional ? ' (Nota provisoria: faltan atributos y descripciones)' : ''}</b>${a.scores.withAttrs < a.scores.total ? ` · atributos leídos en ${a.scores.withAttrs} de ${a.scores.total}` : ''}. Peores: ${a.scores.worst.map((w) => `${esc(w.title)} (${w.score}): ${w.improvements.map(esc).join(' · ')}`).join(' — ')}</div>` : ''}
     ${a.season ? `<div class="small">Temporada: ${Math.round(a.season.share * 100)} % de ${esc(a.season.season)} · fuera de temporada ~${fmtMoney(a.season.offMonthly)}/mes.</div>` : ''}
     <div class="small muted">Titular: ${esc(a.headline)} · Abandonadas: ${a.abandoned}${a.problems.length ? ` · ${a.problems.map((p) => `${esc(p.label)}: ${esc(p.detail)}`).join(' · ')}` : ''}</div>` : a && !a.ready ? '<div class="small muted">La cuenta todavía se está leyendo. Probá "Releer y regenerar".</div>' : ''}
   </section>`;
@@ -321,21 +322,6 @@ async function loadAccount() {
   }
   acctBusy = 'load'; acctMsg = ''; render();
   try { acct = await call('GET', null, `?view=account&user_id=${encodeURIComponent(selUser)}`); } catch (e) { acctMsg = e.message; }
-  acctBusy = ''; render();
-}
-
-async function publicRefresh() {
-  acctBusy = 'public'; acctMsg = 'Leyendo datos públicos de las publicaciones con el token de otra cuenta conectada (no lee ventas ni facturación)…'; render();
-  try {
-    let d = await call('POST', { action: 'public_refresh', user_id: selUser, start: true });
-    for (let i = 0; i < 40 && !d.done; i++) {
-      acctMsg = `Leyendo publicaciones: ${d.cursor}/${d.total} (token de ${d.donor})…`; render();
-      d = await call('POST', { action: 'public_refresh', user_id: selUser });
-    }
-    acctMsg = d.done ? `Listo: ${d.total} publicaciones releídas con el token de ${d.donor}. Atributos leídos en ${d.withAttrs}. Diagnóstico regenerado.` : 'Sigue: tocá el botón de nuevo para continuar.';
-    await loadAccount();
-    return;
-  } catch (e) { acctMsg = e.message; }
   acctBusy = ''; render();
 }
 
@@ -411,7 +397,6 @@ function validationView() {
   document.getElementById('acc-load')?.addEventListener('click', loadAccount);
   document.getElementById('acc-regen')?.addEventListener('click', regenAccount);
   document.getElementById('acc-stored')?.addEventListener('click', regenStored);
-  document.getElementById('acc-public')?.addEventListener('click', publicRefresh);
   document.getElementById('vcopy')?.addEventListener('click', async () => {
     const t = document.getElementById('vraw').textContent;
     try { await navigator.clipboard.writeText(t); document.getElementById('vcopy').textContent = 'Copiado'; } catch { const sel = getSelection(); const rg = document.createRange(); rg.selectNodeContents(document.getElementById('vraw')); sel.removeAllRanges(); sel.addRange(rg); }

@@ -73,7 +73,7 @@ async function checkMeli() {
   let conns = [];
   try { conns = await db.select('rinde_connections', {}, { columns: 'refresh_token_enc,scope' }); } catch {}
   const noRefresh = conns.filter((c) => !c.refresh_token_enc).length;
-  const refreshTxt = conns.length ? ` Conexiones: ${conns.length - noRefresh} renovables, ${noRefresh} sin refresh token${noRefresh ? ' (MeLi no está dando refresh token: activá "offline_access" en la app de Mercado Libre y que los usuarios vuelvan a conectar)' : ''}.` : '';
+  const refreshTxt = conns.length ? ` Conexiones: ${conns.length - noRefresh} renovable${conns.length - noRefresh === 1 ? '' : 's'}, ${noRefresh} sin refresh token${noRefresh ? ' (MeLi no está dando refresh token: activá "offline_access" en la app de Mercado Libre y que los usuarios vuelvan a conectar)' : ''}.` : '';
   if (r.ok && noRefresh) return { ok: false, detail: 'App ID y Clave secreta correctos.' + refreshTxt + lastTxt + perfTxt };
   if (r.ok) return { ok: true, detail: 'App ID y Clave secreta correctos.' + refreshTxt + lastTxt + perfTxt };
   const b = await r.json().catch(() => ({}));

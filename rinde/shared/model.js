@@ -110,6 +110,8 @@ export function buildModel(data) {
     avg: scored.length ? Math.round(scored.reduce((s, r) => s + r.score.score, 0) / scored.length) : null,
     worst: [...scored].sort((a, b) => a.score.score - b.score.score).slice(0, 10).map((r) => r.it.id),
     avgConv: scoreCtx.avgConv,
+    // Provisoria: a más de la mitad le faltan atributos y descripción (no se pudieron leer de MeLi).
+    provisional: rows.length > 0 && rows.filter((r) => !r.it.attrs && r.it.desc_len == null).length > rows.length / 2,
   };
 
   // Resumen de temporada: qué parte de lo vendido en 6 meses es de una temporada y cuánto vende la cuenta fuera de ella.

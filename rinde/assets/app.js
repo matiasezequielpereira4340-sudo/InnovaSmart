@@ -278,6 +278,7 @@ function listingsView() {
     <section class="card avg-card">
       <div class="label">Nota promedio de tu cuenta</div>
       <div class="avg-n score-${scoreToneOf(avg)}">${avg ?? '—'}<span>/100</span></div>
+      ${m.scores?.provisional ? `<p class="small" style="margin:0 0 6px"><span class="tag tag-warn">${I.info} Nota provisoria: faltan atributos y descripciones</span></p>` : ''}
       <p class="small muted">Rojo menos de 50 · amarillo 50 a 75 · verde más de 75. Si un dato no se puede leer, ese criterio no cuenta.</p>
     </section>
     <section class="card">

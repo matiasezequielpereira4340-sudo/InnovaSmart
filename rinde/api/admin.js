@@ -11,7 +11,6 @@ import { runHealth } from './_lib/health.js';
 import { sha256 } from './_lib/crypto.js';
 import { getBillingConfig, saveBillingConfig, activateTransfer } from './_lib/mp.js';
 import { mergeBilling } from '../shared/plans.js';
-import { publicRefreshStep } from './_lib/public-refresh.js';
 
 const yearStartAR = () => new Date(`${new Date(Date.now() - 3 * 3600000).getUTCFullYear()}-01-01T00:00:00-03:00`).toISOString();
 const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -165,6 +164,7 @@ export default handler(async (req, res) => {
         worst: m.scores.worst.slice(0, 3).map((id) => { const r = m.rows.find((x) => x.it.id === id); return { title: r.it.title, score: r.score.score, improvements: r.score.improvements.map((x) => x.text) }; }),
         withAttrs: m.rows.filter((r) => r.it.attrs).length,
         total: m.rows.length,
+        provisional: m.scores.provisional,
       },
       season: m.seasonSummary,
     });
@@ -228,15 +228,6 @@ export default handler(async (req, res) => {
       const summary = { ...buildRuleSummary(m), regenerated_by_admin: true };
       await db.insert('rinde_diagnoses', [{ user_id: user.id, input_hash: 'admin-' + Date.now(), summary, tokens_used: 0, sync_finished_at: job.finished_at, counts: m.groupCounts }]);
       return json(res, 200, { done: true, sync: progressOf(job), headline: summary.headline, revenue: m.revenue, lostTotal: m.lostTotal, sanity: m.sanity });
-    }
-    if (body.action === 'public_refresh') {
-      // Cuenta desconectada: relee SOLO datos públicos de sus publicaciones con el token de otra cuenta conectada.
-      const user = await db.one('rinde_users', { id: body.user_id });
-      if (!user) throw new AppError(404, 'No existe ese usuario.');
-      const out = await publicRefreshStep(user.id, { start: !!body.start, req });
-      if (!out.done) return json(res, 200, out);
-      const job = await getJob(user.id);
-      return json(res, 200, { ...out, regen: await regenStored(user, job?.finished_at || null) });
     }
     if (body.action === 'validate') {
       const user = await db.one('rinde_users', { id: body.user_id });
