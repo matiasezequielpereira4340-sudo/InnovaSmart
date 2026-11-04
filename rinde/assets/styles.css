@@ -210,7 +210,7 @@ details.faq p { color: var(--ink-2); max-width: 62ch; }
 
 /* ───────── App ───────── */
 .app-shell { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); min-height: 100vh; }
-.tabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+.tabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
 .tabs a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 4px 10px; color: var(--muted); text-decoration: none; font-size: .76rem; font-weight: 600; }
 .tabs a svg { width: 22px; height: 22px; }
 .tabs a[aria-current='page'] { color: var(--accent); }
@@ -411,3 +411,32 @@ a.chip { text-decoration: none; }
 .data tr.row-bad td.prod b { color: var(--bad); }
 .cat-tile.neutral { border-left-color: var(--line-strong); } .cat-tile.neutral .l { color: var(--muted); }
 .item.tone-neutral { border-left-color: var(--line-strong); }
+
+/* Nota de publicación */
+.score { display: inline-flex; align-items: baseline; gap: 1px; padding: 2px 8px; border-radius: 6px; font: 600 .8rem var(--font-num); white-space: nowrap; border: 1px solid transparent; }
+.score b { font-size: .95rem; }
+.score-bad { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
+.score-warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+.score-ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.lgrid { display: grid; gap: 12px; grid-template-columns: 1fr; margin-bottom: 16px; }
+@media (min-width: 860px) { .lgrid { grid-template-columns: 280px 1fr; } }
+.avg-card .avg-n { font: 700 3rem/1 var(--font-num); margin: 8px 0; letter-spacing: -0.04em; }
+.avg-card .avg-n span { font-size: 1rem; color: var(--muted); font-weight: 500; }
+.avg-n.score-bad { color: var(--bad); } .avg-n.score-warn { color: var(--warn); } .avg-n.score-ok { color: var(--ok); }
+.avg-n.score-bad, .avg-n.score-warn, .avg-n.score-ok { background: none; border: 0; padding: 0; }
+.worst { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: .9rem; }
+.worst a { color: var(--ink); overflow-wrap: anywhere; }
+.lfilters { display: grid; gap: 8px; grid-template-columns: 1fr; margin-bottom: 10px; }
+@media (min-width: 700px) { .lfilters { grid-template-columns: 1fr 200px 240px; } }
+.lfilters input, .lfilters select { min-height: 42px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 0 12px; background: var(--surface); color: var(--ink); font: inherit; width: 100%; }
+.lrows { display: grid; gap: 10px; }
+.lrow { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; }
+.lrow-top { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.lrow-title { flex: 1 1 200px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.lrow-title a { color: var(--ink); }
+.lrow-fix { margin: 8px 0 0; padding-left: 20px; font-size: .88rem; display: grid; gap: 4px; }
+.lrow-more summary { cursor: pointer; color: var(--accent); margin-top: 6px; }
+.lrow-more ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); }
+.season-box { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line-strong); border-left: 4px solid var(--accent); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 14px; }
+.season-box p { margin: 0; }
+.season-box .sb-icon svg { width: 22px; height: 22px; color: var(--accent); }

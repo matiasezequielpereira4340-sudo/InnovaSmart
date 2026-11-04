@@ -147,13 +147,10 @@ export const monthAR = (d = new Date()) => new Date(d.getTime() - 3 * 3600000).g
  * Por el título (invierno/verano y palabras típicas) o porque ≥70 % de sus ventas cayó en los meses de esa temporada.
  * @returns null o { season, reason }
  */
-export function seasonInfo(it, now = new Date()) {
-  const m = monthAR(now);
+export function seasonOf(it, now = new Date()) {
   const months = it.hist?.months || null; // { '1': u, ..., '12': u }
   const total = months ? Object.values(months).reduce((a, b) => a + b, 0) : 0;
   for (const [season, cfg] of Object.entries(SEASONS)) {
-    const inSeason = cfg.months.includes(m) || cfg.pre.includes(m);
-    if (inSeason) continue;
     if (cfg.words.test(it.title || '')) return { season, reason: 'título' };
     if (total >= 3) {
       // Ventas POR DÍA dentro vs fuera de la temporada, dentro de la ventana de 180 días (así no pesa
@@ -169,6 +166,15 @@ export function seasonInfo(it, now = new Date()) {
     }
   }
   return null;
+}
+
+/** Igual que seasonOf, pero solo si HOY está fuera de su temporada (el mes previo cuenta como temporada). */
+export function seasonInfo(it, now = new Date()) {
+  const s = seasonOf(it, now);
+  if (!s) return null;
+  const m = monthAR(now);
+  const cfg = SEASONS[s.season];
+  return cfg.months.includes(m) || cfg.pre.includes(m) ? null : s;
 }
 
 /** Grupo que ve el usuario (tarjetas y lista). Cada publicación cae en uno solo. */
@@ -446,3 +452,59 @@ export const ALERT_LABELS = {
 };
 
 export { CATEGORIES };
+
+// ─────────────────────────────── Sugerencia Full / Flex ────────────────────
+const fmtN = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
+const AMBA_RE = /capital federal|ciudad aut[oó]noma|caba|ar-c\b/i;
+
+/** Semanas que faltan para que termine la temporada actual del producto (hemisferio sur). */
+export function weeksToSeasonEnd(season, now = new Date()) {
+  const cfg = SEASONS[season];
+  const m = monthAR(now);
+  if (!cfg.months.includes(m) && !cfg.pre.includes(m)) return 0;
+  let end = cfg.months.includes(m) ? m : cfg.months[0];
+  for (let g = 0; g < 12; g++) { const nx = (end % 12) + 1; if (!cfg.months.includes(nx)) break; end = nx; }
+  const year = new Date(now.getTime() - 3 * 3600000).getUTCFullYear() + (end < m ? 1 : 0);
+  const endDate = Date.UTC(year, end, 1, 3); // 1° del mes siguiente al último de la temporada, 00:00 AR
+  return Math.max(0, (endDate - now.getTime()) / (7 * 86400000));
+}
+
+/**
+ * Sugerencia de pasar a Full o Flex, solo para productos con venta sostenida. No suma plata al titular.
+ * @returns null o { kind: 'full' | 'flex' | 'no_full_temporada', title, text }
+ */
+export function shippingSuggestion(it, profit, seller = {}, now = new Date()) {
+  const w = it.hist?.weeks;
+  if (!Array.isArray(w) || w.length < 6) return null;
+  if (it.status !== 'active' || (it.available_quantity ?? 0) <= 0) return null;
+  const logistic = it.shipping?.logistic;
+  if (logistic === 'fulfillment') return null;
+  const rate = w.slice(0, 4).reduce((a, b) => a + b, 0) / 4; // ritmo actual: promedio de las últimas 4 semanas
+  const weeks2 = w.filter((x) => x >= 2).length;
+  const weeks1 = w.filter((x) => x >= 1).length;
+  const stockWeeks = rate > 0 ? (it.available_quantity || 0) / rate : 0;
+  const season = seasonOf(it, now);
+  if (season && seasonInfo(it, now)) return null; // fuera de temporada: no se sugiere nada
+
+  if (weeks2 >= 4 && stockWeeks >= 4) {
+    const left = season ? weeksToSeasonEnd(season.season, now) : null;
+    if (left != null && left < 6) {
+      return { kind: 'no_full_temporada', title: 'No la mandes a Full ahora',
+        text: `Vende bien, pero la temporada de ${season.season} termina en ~${Math.max(1, Math.round(left))} semana(s): no la mandes a Full, te van a cobrar el guardado cuando deje de venderse.` };
+    }
+    const unitNet = profit?.hasCost && profit.units ? profit.net / profit.units : null;
+    const margin = unitNet != null
+      ? ` Hoy te quedan ~$${Math.round(unitNet).toLocaleString('es-AR')} por unidad; con Full restale el costo de guardado (depende del tamaño y de cuánto tarda en venderse).`
+      : ' Cargá el costo para saber si te conviene.';
+    return { kind: 'full', title: 'Pasala a Full',
+      text: `Vendés ~${fmtN(rate)} por semana hace ${weeks2} semanas y tenés stock para ${Math.floor(stockWeeks)}: con Full llegás más rápido y Mercado Libre te muestra más arriba. Ojo: Full cobra por guardar el stock.${margin}` };
+  }
+  if (logistic !== 'flex' && !it.shipping?.flex && weeks1 >= 4) {
+    const where = [seller.state, seller.city].filter(Boolean).join(' ');
+    const amba = where ? AMBA_RE.test(where) || /buenos aires/i.test(where) : null;
+    if (amba === false) return null;
+    return { kind: 'flex', title: 'Sumá Flex',
+      text: `Vendés ~${fmtN(rate)} por semana hace ${weeks1} semanas en envío común${amba ? '' : ', así que si podés entregar en el día en AMBA'}: con Flex el comprador lo recibe en el día y Mercado Libre la muestra mejor.` };
+  }
+  return null;
+}

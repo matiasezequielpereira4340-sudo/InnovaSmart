@@ -162,13 +162,65 @@ export async function listItemIds(t, sellerId) {
 }
 
 export async function getItems(t, ids) {
-  const attrs = 'id,title,price,currency_id,status,sub_status,available_quantity,sold_quantity,listing_type_id,shipping,catalog_product_id,catalog_listing,pictures,thumbnail,permalink,category_id,attributes,seller_custom_field,tags,health,date_created';
+  const attrs = 'id,title,price,currency_id,status,sub_status,available_quantity,sold_quantity,listing_type_id,shipping,catalog_product_id,catalog_listing,pictures,thumbnail,permalink,category_id,attributes,variations,video_id,seller_custom_field,tags,health,date_created';
   const out = [];
   for (const c of chunk(ids, 20)) {
     const data = await meliGet(t, `/items?ids=${c.join(',')}&attributes=${attrs}`);
     for (const row of data || []) if (row.code === 200 && row.body) out.push(row.body);
   }
   return out;
+}
+
+/**
+ * Atributos que pide una categoría (requeridos y recomendados). Público, cacheado 7 días por categoría
+ * en rinde_settings (lo comparten todos los usuarios) para no repetir pedidos a MeLi.
+ */
+const CAT_TTL = 7 * 86400000;
+const SKIP_ATTRS = new Set(['SELLER_SKU', 'ITEM_CONDITION', 'GTIN', 'EMPTY_GTIN_REASON']);
+export async function getCategoryAttrs(t, catIds) {
+  const ids = [...new Set(catIds.filter(Boolean))];
+  const out = {};
+  if (!ids.length) return out;
+  const cached = await db.select('rinde_settings', { key: ids.map((id) => `cat_attrs:${id}`) }).catch(() => []);
+  for (const r of cached) if (r.value?.at && Date.now() - new Date(r.value.at).getTime() < CAT_TTL) out[r.key.slice(10)] = r.value;
+  const missing = ids.filter((id) => !out[id]);
+  const fresh = [];
+  await pool(missing, 2, async (id) => {
+    const d = await meliGet(t, `/categories/${id}/attributes`, { allow404: true });
+    if (!Array.isArray(d)) return;
+    const pick = (a) => ({ id: a.id, name: a.name });
+    const usable = d.filter((a) => !SKIP_ATTRS.has(a.id) && !a.tags?.hidden && !a.tags?.read_only && !a.tags?.fixed && !a.tags?.others);
+    const required = usable.filter((a) => a.tags?.required || a.tags?.catalog_required).map(pick);
+    const reqIds = new Set(required.map((a) => a.id));
+    const recommended = usable.filter((a) => !reqIds.has(a.id) && a.relevance === 1).map(pick);
+    out[id] = { required, recommended, at: new Date().toISOString() };
+    fresh.push({ key: `cat_attrs:${id}`, value: out[id], updated_at: new Date().toISOString() });
+  });
+  if (fresh.length) await db.upsert('rinde_settings', fresh, 'key').catch(() => {});
+  return out;
+}
+
+/** Atributos que faltan en la publicación contra los que pide su categoría (cuenta también los de variaciones). */
+export function missingAttrs(b, cat) {
+  if (!cat) return null;
+  const filled = new Set();
+  const ok = (a) => a && (a.value_name || a.value_id || (Array.isArray(a.values) && a.values.some((v) => v.name || v.id)));
+  for (const a of b.attributes || []) if (ok(a)) filled.add(a.id);
+  for (const v of b.variations || []) for (const a of [...(v.attribute_combinations || []), ...(v.attributes || [])]) if (ok(a)) filled.add(a.id);
+  return {
+    req_total: cat.required.length,
+    rec_total: cat.recommended.length,
+    req_missing: cat.required.filter((a) => !filled.has(a.id)).map((a) => a.name),
+    rec_missing: cat.recommended.filter((a) => !filled.has(a.id)).map((a) => a.name),
+  };
+}
+
+/** Largo de la descripción (texto plano). 0 si no tiene; null si no se pudo leer. */
+export async function getDescriptionLength(t, id) {
+  let missing = false;
+  const d = await meliGet(t, `/items/${id}/description`, { allow404: true, onMiss: (m) => { if (m.status === 404) missing = true; } });
+  if (d) return String(d.plain_text || d.text || '').replace(/<[^>]+>/g, '').trim().length;
+  return missing ? 0 : null;
 }
 
 /** Visitas de los últimos 30 días por publicación. */
@@ -403,6 +455,11 @@ export function normalizeItem(b) {
     category_id: b.category_id,
     pictures_count: (b.pictures || []).length,
     thumbnail: b.thumbnail ? b.thumbnail.replace(/^http:/, 'https:') : null,
+    // Lado menor de cada foto en su tamaño máximo (para detectar fotos chicas). null si MeLi no lo informa.
+    pics: Array.isArray(b.pictures) && b.pictures.some((p) => p.max_size || p.size)
+      ? b.pictures.map((p) => { const m = String(p.max_size || p.size || '').match(/(\d+)x(\d+)/); return m ? Math.min(+m[1], +m[2]) : 0; })
+      : null,
+    video: 'video_id' in b ? !!b.video_id : null,
     permalink: b.permalink,
   };
 }

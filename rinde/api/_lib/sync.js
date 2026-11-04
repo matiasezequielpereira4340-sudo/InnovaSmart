@@ -64,7 +64,7 @@ export async function step(userId, sellerId) {
         nickname: me.nickname,
         settings: { ...(prevUser?.settings || {}), prev_reputation: prevUser?.settings?.reputation?.level_id || null, reputation: me.seller_reputation || null },
       });
-      Object.assign(job, { item_ids: ids, total: ids.length, cursor: 0, phase: ids.length ? 'items' : 'orders', meta: { questions, productAds, seller: { id: me.id, nickname: me.nickname, reputation: me.seller_reputation || null } } });
+      Object.assign(job, { item_ids: ids, total: ids.length, cursor: 0, phase: ids.length ? 'items' : 'orders', meta: { questions, productAds, seller: { id: me.id, nickname: me.nickname, reputation: me.seller_reputation || null, state: me.address?.state || null, city: me.address?.city || null } } });
     } else if (job.phase === 'items') {
       const batch = job.item_ids.slice(job.cursor, job.cursor + LIMITS.ITEMS_PER_SYNC_STEP);
       const raw = await meli.getItems(token, batch);
@@ -76,12 +76,17 @@ export async function step(userId, sellerId) {
         try { await db.upsert('rinde_settings', [{ key: 'last_perf_probe', value: { ...probe, at: new Date().toISOString() }, updated_at: new Date().toISOString() }], 'key'); } catch {}
       }
       const comp = FEATURES.competition ? await meli.pool(raw, 3, (b) => meli.getCompetition(token, b)) : raw.map(() => null);
+      // Para la Nota de publicación: atributos de la categoría (caché) y largo de la descripción.
+      const cats = await meli.getCategoryAttrs(token, raw.map((b) => b.category_id)).catch(() => ({}));
+      const descs = await meli.pool(raw, 3, (b) => meli.getDescriptionLength(token, b.id));
       const rows = raw.map((b, i) => {
         const it = meli.normalizeItem(b);
         const q = job.meta.questions?.[b.id];
         it.visits30 = visits[b.id] ?? null;
         it.quality = perf[i]?.__error ? null : perf[i];
         it.competition = comp[i]?.__error ? null : comp[i];
+        it.attrs = meli.missingAttrs(b, cats[b.category_id]);
+        it.desc_len = descs[i]?.__error ? null : descs[i];
         it.questions_unanswered = q?.count || 0;
         it.oldest_question_hours = q?.oldest ? Math.round((Date.now() - q.oldest) / 3600000) : 0;
         return { user_id: userId, item_id: b.id, data: it, fetched_at: now() };
@@ -232,8 +237,10 @@ export function itemHistories(orders) {
     const t = new Date(o.date_created).getTime();
     const month = new Date(t - 3 * 3600000).getUTCMonth() + 1;
     for (const l of o.data?.lines || []) {
-      const h = (by[l.item_id] ||= { months: {}, sales: [], last: 0 });
+      const h = (by[l.item_id] ||= { months: {}, sales: [], last: 0, weeks: [0, 0, 0, 0, 0, 0] });
       const q = Number(l.qty) || 0;
+      const wk = Math.floor((Date.now() - t) / (7 * DAY)); // 0 = últimos 7 días
+      if (wk >= 0 && wk < 6) h.weeks[wk] += q;
       h.months[month] = (h.months[month] || 0) + q;
       h.sales.push([t, q * (Number(l.unit_price) || 0)]);
       if (t > h.last) h.last = t;
@@ -242,7 +249,7 @@ export function itemHistories(orders) {
   const out = {};
   for (const [id, h] of Object.entries(by)) {
     const from = h.last - 60 * DAY;
-    out[id] = { months: h.months, last_sale_at: new Date(h.last).toISOString(), rev60: h.sales.filter(([t]) => t >= from).reduce((s, [, v]) => s + v, 0) };
+    out[id] = { months: h.months, weeks: h.weeks, last_sale_at: new Date(h.last).toISOString(), rev60: h.sales.filter(([t]) => t >= from).reduce((s, [, v]) => s + v, 0) };
   }
   return out;
 }

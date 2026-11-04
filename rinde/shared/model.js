@@ -1,7 +1,8 @@
 // Arma el "modelo" de la cuenta a partir de los datos crudos.
 // Mismo código para la cuenta real (servidor) y para el demo (navegador).
-import { classify, computeProductProfit, buildRulePlan, lostSalesEstimate, rankProblems, prorate, replacementWarning, buildAlerts, groupOf, seasonInfo } from './rules.js';
-import { CATEGORIES, GROUPS } from './config.js';
+import { classify, computeProductProfit, buildRulePlan, lostSalesEstimate, rankProblems, prorate, replacementWarning, buildAlerts, groupOf, seasonInfo, seasonOf, itemHistory, shippingSuggestion } from './rules.js';
+import { CATEGORIES, GROUPS, SEASONS } from './config.js';
+import { listingScore, accountConversion } from './score.js';
 
 export function costKey(it) {
   return (it.sku && String(it.sku).trim()) || it.id;
@@ -26,6 +27,7 @@ export function buildModel(data) {
   const adsSource = productAds ? 'api' : Number(settings.ads_manual_monthly) > 0 ? 'manual' : 'ninguno';
   const manualShare = productAds ? {} : prorate(Number(settings.ads_manual_monthly) || 0, revenueByItem);
 
+  const scoreCtx = { avgConv: accountConversion(items) };
   const rows = items.map((it) => {
     const cost = costs[costKey(it)] || null;
     const ads = (productAds ? productAds[it.id] || 0 : manualShare[it.id] || 0) + (metaShare[it.id] || 0);
@@ -36,7 +38,15 @@ export function buildModel(data) {
     const season = group === 'TEMPORADA' ? seasonInfo(it) : null;
     // De temporada: el plan de reglas manda (la IA podría decir "reponé stock" de un producto de invierno en noviembre).
     const plan = season ? buildRulePlan(it, cls, profit) : plans[it.id] || buildRulePlan(it, cls, profit);
-    return { it, cost, profit, cls, lost, plan, group, season, warning: replacementWarning(profit) };
+    const score = listingScore(it, scoreCtx);
+    // Sugerencia Full/Flex (solo productos validados). Va al plan y a las mejoras de la nota; no suma plata.
+    const ship = shippingSuggestion(it, profit, seller);
+    let planOut = plan;
+    if (ship) {
+      score.improvements = [{ text: ship.text, gain: 0, key: ship.kind, suggestion: true }, ...score.improvements].slice(0, 3);
+      planOut = { ...plan, actions: [{ title: ship.title, detail: ship.text, impact: ship.kind === 'full' ? 'alto' : 'medio' }, ...(plan.actions || []).filter((a) => !/full|flex/i.test(a.title))].slice(0, 5) };
+    }
+    return { ship, it, cost, profit, cls, lost, plan: planOut, group, season, score, warning: replacementWarning(profit) };
   });
 
   const counts = Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, 0]));
@@ -92,7 +102,40 @@ export function buildModel(data) {
     exceedsAvg: revenueReal.monthlyAvg180 != null && lostTotal > revenueReal.monthlyAvg180 + 1,
   };
   const hasAnyCost = rows.some((r) => r.profit.hasCost);
-  return { rows, counts, groupCounts, problems, allProblems: ranked.problems, abandoned: ranked.abandoned, seasonal: ranked.seasonal, tips: ranked.tips, kpis, alerts, lostTotal, revenue: revenueReal, sanity, hasAnyCost, seller };
+  const shipCounts = { full: rows.filter((r) => r.ship?.kind === 'full').length, flex: rows.filter((r) => r.ship?.kind === 'flex').length, no_full_temporada: rows.filter((r) => r.ship?.kind === 'no_full_temporada').length };
+
+  // Nota de publicación: promedio de la cuenta y las 10 peores.
+  const scored = rows.filter((r) => r.score.score != null);
+  const scores = {
+    avg: scored.length ? Math.round(scored.reduce((s, r) => s + r.score.score, 0) / scored.length) : null,
+    worst: [...scored].sort((a, b) => a.score.score - b.score.score).slice(0, 10).map((r) => r.it.id),
+    avgConv: scoreCtx.avgConv,
+  };
+
+  // Resumen de temporada: qué parte de lo vendido en 6 meses es de una temporada y cuánto vende la cuenta fuera de ella.
+  const bySeason = {};
+  let rev180 = 0;
+  for (const r of rows) {
+    const v = itemHistory(r.it).revenue180;
+    rev180 += v;
+    const s = v ? seasonOf(r.it) : null;
+    if (s) bySeason[s.season] = (bySeason[s.season] || 0) + v;
+  }
+  let seasonSummary = null;
+  const top = Object.entries(bySeason).sort((a, b) => b[1] - a[1])[0];
+  if (top && rev180 > 0 && top[1] / rev180 >= 0.5) {
+    const [season, amount] = top;
+    const cfg = SEASONS[season];
+    // Meses completos fuera de temporada (sin el mes en curso ni el primero de la ventana, que están incompletos).
+    const months = Object.entries(rev?.months || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    const full = months.slice(1).filter(([k]) => k !== new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 7));
+    const off = full.filter(([k]) => !cfg.months.includes(Number(k.slice(5, 7))));
+    const offMonthly = off.length
+      ? off.reduce((s, [, v]) => s + (v.amount || 0), 0) / off.length
+      : (rev180 - amount) / 6;
+    seasonSummary = { season, share: amount / rev180, offMonthly, offMonths: off.map(([k]) => k), prepare: cfg.prepare };
+  }
+  return { rows, scores, seasonSummary, shipCounts, counts, groupCounts, problems, allProblems: ranked.problems, abandoned: ranked.abandoned, seasonal: ranked.seasonal, tips: ranked.tips, kpis, alerts, lostTotal, revenue: revenueReal, sanity, hasAnyCost, seller };
 }
 
 import { fmtMoney } from './rules.js';
@@ -158,6 +201,9 @@ export function buildRuleSummary(model) {
     tips: (model.tips || []).map((t) => ({ label: 'Sugerencia', detail: t.code === 'publicacion_clasica'
       ? `${t.count} publicación(es) son Clásicas: en Premium se ofrecen cuotas sin interés. Es una sugerencia, no la contamos como plata perdida.`
       : 'Si en algún momento querés acelerar entregas, Flex o Full ayudan a posicionar. No lo contamos como plata perdida.', small: true })),
+    shipNote: model.shipCounts && (model.shipCounts.full || model.shipCounts.flex)
+      ? [model.shipCounts.full ? `${model.shipCounts.full} publicación(es) listas para Full` : '', model.shipCounts.flex ? `${model.shipCounts.flex} para sumar Flex` : ''].filter(Boolean).join(' y ') + ': venden sostenido todas las semanas. Lo ves en el plan de cada una (no suma al estimado).'
+      : null,
     first: p[0] ? (FIX_HINT[p[0].code] || '').replace(/:$/, '.') : null,
     source: 'reglas',
   };

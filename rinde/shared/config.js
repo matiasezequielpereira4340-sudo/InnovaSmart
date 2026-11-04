@@ -79,8 +79,8 @@ export const GROUPS = {
 // Temporada (hemisferio sur). Meses 1-12. Una publicación es "de temporada" fuera de su época si el título lo dice
 // o si al menos el 70 % de sus ventas de 6 meses cayó en esos meses. El mes previo cuenta como temporada (se repone antes).
 export const SEASONS = {
-  invierno: { months: [5, 6, 7, 8], pre: [4], words: /invierno|polar|kigurumi|frazada|estufa|calefactor|bufanda|chiporro|corderito|abrigo|campera|guantes t[eé]rmicos|pantuflas/i },
-  verano: { months: [11, 12, 1, 2], pre: [10], words: /verano|pileta|piscina|inflable|malla|bikini|protector solar|pistola de agua|ventilador|sombrilla|reposera|ojotas/i },
+  invierno: { months: [5, 6, 7, 8], pre: [4], prepare: 'marzo/abril', words: /invierno|polar|kigurumi|frazada|estufa|calefactor|bufanda|chiporro|corderito|abrigo|campera|guantes t[eé]rmicos|pantuflas/i },
+  verano: { months: [11, 12, 1, 2], pre: [10], prepare: 'agosto/septiembre', words: /verano|pileta|piscina|inflable|malla|bikini|protector solar|pistola de agua|ventilador|sombrilla|reposera|ojotas/i },
 };
 
 export const PLAN_PRICE_ARS = 15000;
@@ -90,6 +90,7 @@ export const WA_MESSAGES = {
   subscribe: 'Hola, quiero el Plan Rinde de $15.000',
   optimize: 'Hola! Usé Rinde y quiero que Innovasmart optimice mis publicaciones de Mercado Libre por mí.',
   ai: 'Hola! Vi Rinde y quiero aprender a usar IA en mi negocio como esta herramienta.',
+  import: 'Hola! Usé Rinde y quiero sumar productos para la otra temporada. ¿Me ayudan a importarlos?',
   help: 'Hola! Tengo una consulta sobre Rinde.',
 };
 

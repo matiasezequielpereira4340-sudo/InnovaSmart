@@ -98,7 +98,7 @@ function errorView(msg, retry = true) {
 function header() {
   const route = currentRoute();
   const tab = (r, icon, label) => `<a href="#/${r}" ${route === r ? 'aria-current="page"' : ''}>${I[icon]}<span>${label}</span></a>`;
-  const tabs = `<nav class="tabs" aria-label="Secciones de la app">${tab('diagnostico', 'search', 'Diagnóstico')}${tab('rentabilidad', 'money', 'Rentabilidad')}${tab('alertas', 'bell', 'Alertas')}</nav>`;
+  const tabs = `<nav class="tabs" aria-label="Secciones de la app">${tab('diagnostico', 'search', 'Diagnóstico')}${tab('publicaciones', 'list', 'Publicaciones')}${tab('rentabilidad', 'money', 'Rentabilidad')}${tab('alertas', 'bell', 'Alertas')}</nav>`;
   return `${DEMO ? `<div class="demo-bar"><div class="wrap"><span>${I.info.replace('<svg', '<svg style="width:16px;height:16px;vertical-align:-3px"')} Estás viendo una <b>cuenta de ejemplo</b> con datos ficticios.</span><a href="/api/auth/login">Diagnosticar mi cuenta gratis →</a></div></div>` : ''}
   <header class="topbar"><div class="wrap">
     <a class="logo" href="${DEMO ? '/' : '#/diagnostico'}" aria-label="Rinde"><span class="logo-mark" data-logo></span>Rinde<span class="dot">.</span></a>
@@ -120,7 +120,7 @@ function header() {
 
 function currentRoute() {
   const r = (location.hash || '#/diagnostico').replace('#/', '');
-  return ['diagnostico', 'rentabilidad', 'alertas', 'conectando'].includes(r) ? r : 'diagnostico';
+  return ['diagnostico', 'publicaciones', 'rentabilidad', 'alertas', 'conectando'].includes(r) ? r : 'diagnostico';
 }
 
 function billingBanner() {
@@ -143,6 +143,7 @@ function render() {
   }
   let body = '';
   if (route === 'rentabilidad') body = profitView();
+  else if (route === 'publicaciones') body = listingsView();
   else if (route === 'alertas') body = alertsView();
   else body = diagnosisView();
   $app.innerHTML = header() + billingBanner() + `<main class="wrap${route === 'rentabilidad' ? ' wide' : ''}">${body}</main>
@@ -180,6 +181,7 @@ function diagnosisView() {
       : `<a class="btn btn-light btn-sm" href="/suscribirme">${I.lock} Regenerar con Plan Rinde</a>`}
   </div>
   ${!canRegen ? `<div class="notice notice-info" style="margin-bottom:14px">${I.info}<div>Ya usaste tu diagnóstico gratis: podés verlo siempre. Para actualizarlo cuando cambies algo, <a href="/suscribirme">suscribite al Plan Rinde</a>.</div></div>` : ''}
+  ${seasonBox(m)}
   <div class="diag-grid">
     <section class="summary-card" aria-labelledby="sum-h">
       <div class="label">Resumen de la cuenta · ${total} publicaciones</div>
@@ -188,6 +190,7 @@ function diagnosisView() {
       <div class="problems">${(sum.problems || []).map((p) => problemBlock(p)).join('') || '<div class="problem"><b>Sin problemas graves</b><span>Tu cuenta está sana.</span></div>'}</div>
       ${sum.seasonal ? `<div class="problems problems-extra">${problemBlock(sum.seasonal, 'De temporada')}</div>` : ''}
       ${sum.abandoned ? `<div class="problems problems-extra">${problemBlock(sum.abandoned, 'Abandonadas')}</div>` : ''}
+      ${sum.shipNote ? `<p class="tip-line">${I.truck || I.info} ${esc(sum.shipNote)}</p>` : ''}
       ${(sum.tips || []).length ? sum.tips.map((t) => `<p class="tip-line">${I.info} ${esc(t.detail)}</p>`).join('') : ''}
       ${sum.first ? `<div class="first">${I.arrow}<div><b>Qué arreglar primero:</b> ${esc(sum.first)}</div></div>` : ''}
       ${sum.explain ? `<details class="meta" style="margin-top:12px"><summary style="cursor:pointer;color:var(--panel-ink);font-weight:600">¿Cómo calculamos este número?</summary><p style="margin:6px 0 0">${esc(sum.explain)}</p></details>` : ''}
@@ -216,6 +219,73 @@ function problemBlock(p, tag) {
   return `<div class="problem${tag ? ' problem-tag' : ''}">${tag ? `<span class="ptag">${esc(tag)}</span>` : ''}<b>${esc(p.label)}</b><span>${esc(p.detail)}${p.fix ? ` — ${esc(p.fix)}` : ''}</span>${topList(p.top)}</div>`;
 }
 
+function scoreBadge(sc) {
+  if (!sc || sc.score == null) return '';
+  return `<span class="score score-${sc.tone}" title="Nota de publicación (Rinde)"><b>${sc.score}</b>/100</span>`;
+}
+
+function seasonBox(m) {
+  const s = m.seasonSummary;
+  if (!s) return '';
+  return `<section class="season-box" aria-label="Resumen de temporada">
+    <div class="sb-icon">${I.calendar}</div>
+    <div>
+      <p><b>El ${Math.round(s.share * 100)} % de tus ventas de los últimos 6 meses son productos de ${esc(s.season)}.</b> Fuera de temporada tu cuenta vende ~${fmtMoney(s.offMonthly)}/mes. Preparate: reponé y reactivá un mes antes del ${esc(s.season)} (${esc(s.prepare)}).</p>
+      <p class="small" style="margin-top:6px">¿Querés sumar productos para la otra temporada? Innovasmart te ayuda a importarlos.
+      <a class="btn btn-wa btn-sm" style="margin-left:4px" href="${waLink('import')}" target="_blank" rel="noopener">${I.chat} Hablar por WhatsApp</a></p>
+    </div>
+  </section>`;
+}
+
+// ─────────────────────────────── Publicaciones (Nota) ──────────────────────
+function listingRow(r) {
+  const sc = r.score;
+  return `<article class="lrow">
+    <div class="lrow-top">${scoreBadge(sc)}<div class="lrow-title">${r.it.permalink && r.it.permalink !== '#' ? `<a href="${esc(r.it.permalink)}" target="_blank" rel="noopener">${esc(r.it.title)}</a>` : esc(r.it.title)}</div>${catTag(r.group)}</div>
+    ${sc.improvements.length ? `<ol class="lrow-fix">${sc.improvements.map((x) => `<li>${esc(x.text)} <span class="muted">${x.suggestion ? 'sugerencia' : '+' + x.gain}</span></li>`).join('')}</ol>` : '<p class="small muted" style="margin:6px 0 0">Bien armada. Mantenela así.</p>'}
+    <details class="lrow-more"><summary class="small">Cómo se calcula</summary><ul class="small">${sc.criteria.map((c) => `<li>${esc(c.label)} (peso ${Math.round(c.weight)}): ${esc(c.note)} → ${Math.round(c.value * c.weight)}/${Math.round(c.weight)}</li>`).join('')}</ul></details>
+  </article>`;
+}
+
+function listingsView() {
+  const m = S.model;
+  const L = S.list || (S.list = { tone: 'todas', group: 'TODAS', q: '' });
+  const byId = Object.fromEntries(m.rows.map((r) => [r.it.id, r]));
+  const worst = (m.scores?.worst || []).map((id) => byId[id]).filter(Boolean);
+  const q = L.q.trim().toLowerCase();
+  const rows = m.rows
+    .filter((r) => r.score?.score != null)
+    .filter((r) => L.tone === 'todas' || r.score.tone === L.tone)
+    .filter((r) => L.group === 'TODAS' || r.group === L.group)
+    .filter((r) => !q || (r.it.title || '').toLowerCase().includes(q))
+    .sort((a, b) => a.score.score - b.score.score);
+  const avg = m.scores?.avg;
+  const tones = [['todas', 'Todas las notas'], ['bad', 'Roja (menos de 50)'], ['warn', 'Amarilla (50 a 75)'], ['ok', 'Verde (más de 75)']];
+  const groups = ['SIN_STOCK', 'PAUSADAS', 'TEMPORADA', 'ABANDONADAS', 'POCA_VISIBILIDAD', 'SIN_VENTAS', 'PIERDE_PLATA', 'BLOQUEADAS', 'SANA'].filter((k) => m.groupCounts[k]);
+  return `
+  <div class="page-head"><div><h1>Publicaciones</h1><div class="small muted">Nota de 0 a 100 armada por Rinde con lo que Mercado Libre sí nos da: atributos, fotos, título, descripción, video, tipo, envío, preguntas y conversión.</div></div></div>
+  <div class="lgrid">
+    <section class="card avg-card">
+      <div class="label">Nota promedio de tu cuenta</div>
+      <div class="avg-n score-${scoreToneOf(avg)}">${avg ?? '—'}<span>/100</span></div>
+      <p class="small muted">Rojo menos de 50 · amarillo 50 a 75 · verde más de 75. Si un dato no se puede leer, ese criterio no cuenta.</p>
+    </section>
+    <section class="card">
+      <h3 style="margin-top:0">Tus 10 peores publicaciones</h3>
+      <ol class="worst">${worst.map((r) => `<li>${scoreBadge(r.score)} <a href="#it-l-${esc(r.it.id)}" data-jump="${esc(r.it.id)}">${esc(r.it.title)}</a></li>`).join('')}</ol>
+    </section>
+  </div>
+  <div class="lfilters">
+    <label class="sr" for="lq">Buscar por título</label><input id="lq" type="search" placeholder="Buscar por título" value="${esc(L.q)}">
+    <label class="sr" for="ltone">Filtrar por nota</label><select id="ltone">${tones.map(([k, l]) => `<option value="${k}" ${L.tone === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <label class="sr" for="lgroup">Filtrar por grupo</label><select id="lgroup"><option value="TODAS">Todos los grupos</option>${groups.map((k) => `<option value="${k}" ${L.group === k ? 'selected' : ''}>${esc(GROUPS[k].label)} (${m.groupCounts[k]})</option>`).join('')}</select>
+  </div>
+  <div class="small muted" style="margin:0 0 8px">${rows.length} publicación(es) · de peor a mejor nota</div>
+  <div class="lrows">${rows.slice(0, L.limit || 60).map((r) => `<div id="it-l-${esc(r.it.id)}">${listingRow(r)}</div>`).join('') || '<div class="empty">No hay publicaciones con ese filtro.</div>'}</div>
+  ${rows.length > (L.limit || 60) ? `<button class="btn btn-light btn-block" id="lmore" style="margin-top:12px">Ver ${Math.min(60, rows.length - (L.limit || 60))} más</button>` : ''}`;
+}
+const scoreToneOf = (n) => (n == null ? 'neutral' : n < 50 ? 'bad' : n <= 75 ? 'warn' : 'ok');
+
 function itemCard(r) {
   const { it, cls, plan, profit } = r;
   const conv = conversion(it);
@@ -224,7 +294,7 @@ function itemCard(r) {
   const reasons = (cls.reasons || []).filter((x) => x.text);
   return `<details class="item tone-${GROUPS[r.group].tone}" id="it-${esc(it.id)}">
     <summary>
-      <div class="i-top"><div class="i-title">${esc(it.title)}</div>${catTag(r.group)}</div>
+      <div class="i-top"><div class="i-title">${esc(it.title)}</div><span style="display:flex;gap:6px;flex-wrap:wrap">${scoreBadge(r.score)}${catTag(r.group)}</span></div>
       <div class="i-meta"><span>Precio <b>${fmtMoney(it.price)}</b></span><span>Visitas 30 d <b>${sd(it.visits30, (v) => v.toLocaleString('es-AR'))}</b></span><span>Ventas 30 d <b>${it.sales30 ?? 0}</b></span><span>Conversión <b>${conv == null ? 'sin dato' : fmtPct(conv)}</b></span></div>
       <div class="i-head">${plan.verdict === 'liquidar' ? `<span class="tag tag-bad">${I.x} Sin salida</span> ` : ''}${esc(plan.headline)}</div>
       <span class="i-more">Ver plan de acción ${I.chevron}</span>
@@ -240,6 +310,7 @@ function itemCard(r) {
         <div class="fact"><span>Ventas 90 días</span><b>${it.sales90 ?? 0}</b></div>
         <div class="fact"><span>Fotos</span><b>${sd(it.pictures_count)}</b></div>
       </div>
+      ${r.score?.improvements?.length ? `<p class="sec-label">Mejoras que más suben la nota (${r.score.score}/100)</p><ul class="reasons">${r.score.improvements.map((x) => `<li>${esc(x.text)} <span class="muted small">(${x.suggestion ? 'sugerencia' : '+' + x.gain})</span></li>`).join('')}</ul>` : ''}
       ${reasons.length ? `<p class="sec-label">Qué detectamos</p><ul class="reasons">${reasons.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul>` : ''}
       ${plan.actions?.length ? `<p class="sec-label">Plan de acción · de mayor a menor impacto</p>
       <ol class="actions">${plan.actions.map((a) => `<li><b>${esc(a.title)}<span class="impact impact-${esc(a.impact)}">impacto ${esc(a.impact)}</span></b><p>${esc(a.detail)}</p></li>`).join('')}</ol>` : ''}
@@ -545,6 +616,22 @@ function bind(route) {
     runConnecting(true);
   });
 
+  if (route === 'publicaciones') {
+    const L = S.list;
+    const q = document.getElementById('lq');
+    q?.addEventListener('input', () => { L.q = q.value; L.limit = 60; const pos = q.selectionStart; render(); const n = document.getElementById('lq'); n.focus(); n.setSelectionRange(pos, pos); });
+    document.getElementById('ltone')?.addEventListener('change', (e) => { L.tone = e.target.value; L.limit = 60; render(); });
+    document.getElementById('lgroup')?.addEventListener('change', (e) => { L.group = e.target.value; L.limit = 60; render(); });
+    document.getElementById('lmore')?.addEventListener('click', () => { L.limit = (L.limit || 60) + 60; render(); });
+    document.querySelectorAll('[data-jump]').forEach((a) => a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const id = a.dataset.jump;
+      Object.assign(L, { tone: 'todas', group: 'TODAS', q: '', limit: 1000 });
+      render();
+      document.getElementById(`it-l-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }));
+  }
+
   if (route === 'rentabilidad' && (DEMO || S.paid)) {
     document.querySelectorAll('[data-sort]').forEach((b) => b.addEventListener('click', () => {
       const key = b.dataset.sort;
@@ -703,6 +790,14 @@ async function boot() {
       S.demoData.items.forEach((it) => { it.sales30 = 0; it.sales90 = 0; });
     }
     if (new URLSearchParams(location.search).has('sincostos')) S.demoData.costs = {};
+    if (new URLSearchParams(location.search).has('temporada')) {
+      // Variante de ejemplo: una tienda que vende sobre todo productos de invierno.
+      const winter = ['Campera Polar Mujer Abrigo Invierno Capucha Corderito Talles', 'Frazada Polar Doble Faz Corderito 2 Plazas Invierno', 'Estufa Halógena 1200W 3 Velas Bajo Consumo', 'Pantuflas Corderito Mujer Invierno Suela Antideslizante', 'Bufanda Tejida Lana Invierno Unisex Colores', 'Pijama Polar Enterito Adulto Invierno Capucha', 'Guantes Térmicos Touch Invierno Moto Bici'];
+      const top = [...S.demoData.items].sort((a, b) => (b.sales90 || 0) - (a.sales90 || 0)).slice(0, winter.length);
+      top.forEach((it, k) => { it.title = winter[k]; it.hist = { ...it.hist, months: { 5: 12, 6: 18, 7: 15, 8: 9, 9: 2, 10: 1 } }; });
+      const d30 = S.demoData.revenue.d30;
+      S.demoData.revenue.months = { '2026-05': { amount: d30 * 1.4 }, '2026-06': { amount: d30 * 2.1 }, '2026-07': { amount: d30 * 2.0 }, '2026-08': { amount: d30 * 1.3 }, '2026-09': { amount: d30 * 0.5 }, '2026-10': { amount: d30 * 0.45 }, '2026-11': { amount: d30 * 0.05 } };
+    }
     S.model = buildModel(S.demoData);
     S.summary = buildRuleSummary(S.model);
     S.user = { nickname: S.demoData.seller.nickname, ...S.demoData.settings, can_regenerate: true };

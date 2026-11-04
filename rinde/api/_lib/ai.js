@@ -19,7 +19,7 @@ Reglas estrictas:
 - Usá SOLO los datos que te pasan. No inventes números, precios de competencia, ni datos que digan "sin dato".
 - Si un dato dice "sin dato", no lo uses para afirmar nada.
 - Máximo 5 acciones por publicación, ordenadas de mayor a menor impacto. Cada acción es concreta y ejecutable hoy.
-- Tomá como base las "mejoras pendientes de Mercado Libre" y los "motivos detectados".
+- Tomá como base la "Nota de publicación Rinde" y sus mejoras (ya vienen ordenadas por cuánto suben la nota; usá esos textos concretos, con los nombres de atributos tal cual) y los "motivos detectados".
 - Si la publicación no tiene demanda (casi sin visitas con la ficha bien armada, o competencia saturada con un precio imposible de igualar), el veredicto es "liquidar" y el titular dice exactamente: "Este producto no tiene salida: liquidalo o pausalo."
 - Rinde es de solo lectura: las acciones las hace el vendedor en Mercado Libre.
 - Nunca digas que el vendedor "pierde", "perdió" o tiene "pérdidas" salvo que la ganancia neta real sea negativa. Las ventas perdidas son una ESTIMACIÓN: decí "podrías estar dejando de vender" y no pongas montos que no te pasaron.`;
@@ -95,6 +95,8 @@ export function itemFacts(r) {
     `Preguntas sin responder: ${sd(it.questions_unanswered)}${it.oldest_question_hours ? ` (la más vieja hace ${it.oldest_question_hours} h)` : ''}`,
     ...(it.competition ? [`Competencia: ${it.competition ? `mínimo ${fmtMoney(it.competition.min_price)}, mediana ${fmtMoney(it.competition.median_price)}, ${it.competition.count} publicaciones (fuente: ${it.competition.source}); tu diferencia vs referencia: ${fmtPct(priceGap(it))}` : 'sin dato'}`] : []),
     `Rentabilidad 30 días: ${p.hasCost ? `ganancia neta ${fmtMoney(p.net)}, margen ${fmtPct(p.margin)}, margen a costo de reposición ${fmtPct(p.marginReplacement)}, precio mínimo sin pérdida ${fmtMoney(p.minPrice)}, precio sugerido ${fmtMoney(p.suggestedPrice)}` : 'costo sin cargar (no calcules ganancia)'}`,
+    ...(r.score?.score != null ? [`Nota de publicación Rinde: ${r.score.score}/100 · mejoras que más la suben: ${r.score.improvements.map((x) => `${x.text} (+${x.gain})`).join(' | ') || 'ninguna'}`] : []),
+    ...(r.season ? [`De temporada (${r.season.season}) fuera de época: no recomiendes reponer stock ahora.`] : []),
     `Motivos detectados: ${(r.cls.reasons || []).map((x) => x.text).join(' | ') || 'ninguno'}`,
     `Sin demanda según reglas: ${r.cls.noDemand ? 'sí' : 'no'}`,
   ].join('\n');

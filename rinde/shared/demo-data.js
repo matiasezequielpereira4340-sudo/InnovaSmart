@@ -66,10 +66,23 @@ export function getDemoData() {
       thumbnail: null,
       permalink: '#',
       visits30, sales30, sales90,
-      quality: { score: qscore, level_wording: level, pending_actions: extra.pending || (qscore < 85 ? ['Completá los atributos recomendados'] : []) },
+      // Calidad y competencia: MeLi no se las da a la app, así que el demo tampoco las muestra.
+      quality: null,
+      // Datos para la Nota de publicación (de ejemplo): atributos, descripción, video y tamaño de fotos.
+      attrs: (() => {
+        const req = ['Marca', 'Modelo', 'Color', 'Material'];
+        const rec = ['Alto', 'Ancho', 'Largo', 'Peso', 'Garantía', 'Origen', 'Línea', 'Formato de venta'];
+        const miss = Math.max(0, Math.round((90 - qscore) / 7));
+        return { req_total: req.length, rec_total: rec.length, req_missing: req.slice(0, Math.floor(miss / 3)), rec_missing: rec.slice(0, miss) };
+      })(),
+      desc_len: qscore < 60 ? 0 : qscore < 75 ? 180 : 900 + i * 37,
+      video: qscore >= 85,
+      pics: Array.from({ length: pics }, (_, k) => (qscore < 65 && k < 2 ? 400 : 1200)),
       questions_unanswered: qn,
       oldest_question_hours: qn ? extra.qhours || 6 : 0,
-      competition: comp ? { min_price: comp.min, median_price: comp.med, count: comp.n, source: 'búsqueda' } : null,
+      competition: null,
+      hist: { weeks: extra.weeks || [0, 1, 2, 3, 4, 5].map((k) => Math.max(0, Math.round(sales30 / 4.3) - (k % 2))), months: { 5: Math.round(sales90 / 3), 6: Math.round(sales90 / 3), 7: Math.round(sales90 / 4), 8: Math.round(sales90 / 4), 9: Math.round(sales90 / 3), 10: Math.round(sales90 / 3) }, rev60: Math.round((sales90 * 2) / 3) * price },
+      sales180: sales90 * 2, revenue180: sales90 * 2 * price,
     });
     if (pc != null) costs[sku] = { purchase: pc, replacement: rc };
 

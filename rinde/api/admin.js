@@ -135,6 +135,13 @@ export default handler(async (req, res) => {
       headline: rule.headline,
       problems: rule.problems.map((p) => ({ label: p.label, detail: p.detail })),
       abandoned: m.abandoned?.count || 0,
+      scores: {
+        avg: m.scores.avg,
+        worst: m.scores.worst.slice(0, 3).map((id) => { const r = m.rows.find((x) => x.it.id === id); return { title: r.it.title, score: r.score.score, improvements: r.score.improvements.map((x) => x.text) }; }),
+        withAttrs: m.rows.filter((r) => r.it.attrs).length,
+        total: m.rows.length,
+      },
+      season: m.seasonSummary,
     });
   }
 
