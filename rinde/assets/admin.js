@@ -73,16 +73,17 @@ function usersView() {
   <div class="page-head" style="padding-top:4px"><div><h1>Usuarios</h1><div class="small muted">${users.length} usuarios · ${paid} con Plan Rinde · ingreso estimado <span class="num">$${(paid * 15000).toLocaleString('es-AR')}</span>/mes</div></div>
   <div class="field" style="min-width:240px"><label for="q" class="sr">Buscar</label><input id="q" placeholder="Buscar por usuario o email" value="${esc(q)}"></div></div>
   <div class="table-wrap"><table class="data" style="min-width:720px">
-  <thead><tr><th>Usuario</th><th>Plan</th><th>Cobro</th><th>Alta</th><th>Diagnóstico gratis</th><th>Último ingreso</th><th>Acción</th></tr></thead>
+  <thead><tr><th>Usuario</th><th>Plan</th><th>Cobro</th><th>Alta</th><th>Diagnóstico gratis</th><th>Sugerencias</th><th>Último ingreso</th><th>Acción</th></tr></thead>
   <tbody>${list.map((u) => `<tr>
     <td><b>${esc(u.nickname || '—')}</b><div class="tiny muted">ID MeLi ${esc(u.meli_user_id)}${u.alert_email ? ' · ' + esc(u.alert_email) : ''}</div></td>
     <td>${u.plan === 'rinde' ? `<span class="tag tag-ok">${I.check} Plan Rinde</span><div class="tiny muted">desde ${date(u.plan_activated_at)}</div>` : `<span class="tag tag-neutral">Gratis</span>`}</td>
     <td>${billingTag(u)}</td>
     <td>${date(u.created_at)}</td>
     <td>${u.free_diagnosis_used_at ? `<span class="tag tag-accent">Usado ${date(u.free_diagnosis_used_at)}</span>` : '<span class="muted small">Sin usar</span>'}</td>
+    <td class="num" title="Sugerencias de título/descripción generadas">${u.suggestions?.total ? `<b>${u.suggestions.total}</b><div class="tiny muted">${u.suggestions.today} hoy</div>` : '<span class="muted small">Ninguna</span>'}</td>
     <td>${date(u.last_login_at)}</td>
     <td>${u.plan === 'rinde' ? `<button class="btn btn-light btn-sm" data-id="${esc(u.id)}" data-plan="free">Desactivar plan</button>` : `<button class="btn btn-primary btn-sm" data-id="${esc(u.id)}" data-plan="rinde">Activar Plan Rinde</button>`}</td>
-  </tr>`).join('') || '<tr><td colspan="7" class="empty">Todavía no hay usuarios. Aparecen acá cuando alguien conecta su cuenta.</td></tr>'}</tbody></table></div>`;
+  </tr>`).join('') || '<tr><td colspan="8" class="empty">Todavía no hay usuarios. Aparecen acá cuando alguien conecta su cuenta.</td></tr>'}</tbody></table></div>`;
   hydrateIcons(root);
   const qi = document.getElementById('q');
   qi.addEventListener('input', () => { q = qi.value; usersView(); const n = document.getElementById('q'); n.focus(); n.setSelectionRange(q.length, q.length); });
@@ -590,12 +591,22 @@ function healthView() {
   </div>
   <h2 style="font-size:1.2rem;margin:0 0 8px">Variables de entorno</h2>
   <div class="card" style="padding:0;overflow:hidden">${h.env.map((e) => `<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap"><span class="num small">${esc(e.key)}</span><span style="display:flex;gap:8px;align-items:center"><span class="tiny muted">${esc(e.note)}</span>${okTag(e.ok, 'OK', 'Falta')}</span></div>`).join('')}</div>`}
+  <h2 style="font-size:1.2rem;margin:20px 0 8px">Páginas públicas</h2>
+  <div class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span class="small muted">Pide /, /demo, /app, /admin, /suscribirme, /privacidad y /terminos en producción y exige 200. Antes de cada deploy, Vercel corre el mismo chequeo sobre vercel.json (si falla, no se publica).</span><button class="btn btn-light btn-sm" id="routes-run">${I.refresh} Verificar páginas en producción</button></div>
+  ${routesCheck ? (routesCheck.error ? `<div class="notice notice-bad" style="margin-top:10px">${I.alert}<div>${esc(routesCheck.error)}</div></div>` : `<div class="notice ${routesCheck.ok ? 'notice-ok' : 'notice-bad'}" style="margin-top:10px">${routesCheck.ok ? I.checkCircle : I.alert}<div><b>${routesCheck.ok ? 'Todas responden 200.' : 'Hay páginas rotas.'}</b> <span class="num small">${esc(routesCheck.base)}</span> · ${dateTime(routesCheck.at)}<ul class="small" style="margin:6px 0 0;padding-left:18px">${routesCheck.rows.map((r) => `<li class="num">${r.ok ? '✓' : '✗'} ${esc(r.path)} → ${r.status}${r.error ? ' · ' + esc(r.error) : ''} · ${r.ms} ms</li>`).join('')}</ul></div></div>`) : ''}</div>
   <h2 style="font-size:1.2rem;margin:20px 0 8px">Registro: desconexiones, borrados y errores de token</h2>
   <p class="small muted" style="margin:0 0 8px">Últimos 100 eventos. Queda guardado aunque el usuario se borre.</p>
   ${auditCard()}`;
   hydrateIcons(root);
   document.getElementById('hrun')?.addEventListener('click', loadHealth);
+  document.getElementById('routes-run')?.addEventListener('click', async () => {
+    if (DEMO) { routesCheck = { ok: true, base: 'https://rinde-orcin.vercel.app (ejemplo)', at: new Date().toISOString(), rows: ['/', '/demo', '/app', '/admin', '/suscribirme', '/privacidad', '/terminos'].map((p) => ({ path: p, status: 200, ok: true, ms: 120 })) }; return healthView(); }
+    routesCheck = null; healthView();
+    try { routesCheck = await call('POST', { action: 'check_routes' }); } catch (e) { routesCheck = { error: e.message }; }
+    healthView();
+  });
 }
+let routesCheck = null;
 
 async function loadHealth() {
   health = null;

@@ -34,7 +34,7 @@ async function call(path, { method = 'GET', body, prefer, headers = {} } = {}) {
 const enc = (v) => encodeURIComponent(v);
 
 // Tablas con datos de un usuario: cualquier cambio o borrado tiene que llevar su user_id (o id en rinde_users).
-const USER_SCOPED = new Set(['rinde_connections', 'rinde_sync_jobs', 'rinde_items', 'rinde_orders', 'rinde_costs', 'rinde_ai_plans', 'rinde_diagnoses', 'rinde_alerts', 'rinde_validation_runs']);
+const USER_SCOPED = new Set(['rinde_connections', 'rinde_sync_jobs', 'rinde_items', 'rinde_orders', 'rinde_costs', 'rinde_ai_plans', 'rinde_diagnoses', 'rinde_alerts', 'rinde_validation_runs', 'rinde_suggestions']);
 
 /**
  * Protección: nunca se ejecuta un UPDATE o DELETE sin filtro. Si el filtro viene vacío, con valores vacíos

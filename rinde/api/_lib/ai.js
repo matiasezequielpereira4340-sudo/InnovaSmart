@@ -192,3 +192,50 @@ export async function generateSummary(model, ruleSummary) {
     return null;
   }
 }
+
+// ─────────────── Sugerencias para copiar (título y descripción) ───────────────
+// Se llama SOLO cuando el usuario toca "Generar sugerencia" (nunca en lote). Lo que devuelve pasa
+// siempre por shared/suggest.js#finalize: título con largo máximo y sin palabras ajenas, descripción saneada.
+const SUGGEST_SYSTEM = `Sos el redactor de Rinde para vendedores de Mercado Libre Argentina. Escribís en español rioplatense, claro y sin exagerar.
+Reglas que no se rompen nunca:
+- Usá SOLO los datos de la publicación que te pasan (título actual, categoría, atributos, descripción y preguntas respondidas).
+- Prohibido inventar marca, modelo, medidas, materiales, garantía, compatibilidades, cantidades, potencias o cualquier número.
+- Si falta un dato importante, escribí un marcador en mayúsculas entre corchetes, por ejemplo [MEDIDA], [MATERIAL], [GARANTÍA].
+- Título: producto + marca + modelo + atributos clave, sin palabras repetidas, sin mayúsculas sostenidas, sin signos raros, como máximo la cantidad de caracteres indicada. Solo palabras que aparecen en los datos.
+- Descripción: texto plano (sin HTML, sin links, sin emails, sin teléfonos, sin redes sociales ni datos de contacto). Secciones en este orden, con el nombre en mayúsculas: BENEFICIOS, CARACTERÍSTICAS, QUÉ INCLUYE, MEDIDAS, PREGUNTAS FRECUENTES (esta última solo con las preguntas respondidas que te pasan, reescritas cortas). Viñetas con "- ".
+- No prometas envíos, stock, garantía ni plazos que no estén en los datos.`;
+
+const SUGGEST_SCHEMA = {
+  type: 'object',
+  properties: { title: { type: 'string' }, description: { type: 'string' } },
+  required: ['title', 'description'],
+  additionalProperties: false,
+};
+
+export const SUGGEST_MAX_TOKENS = 1800;
+
+/** Devuelve { raw: {title, description}, tokens } o null si la IA no está configurada o falla. */
+export async function generateSuggestion(src, { titleAllowed, max, variant = 0 }) {
+  const c = ai();
+  if (!c) return null;
+  const datos = {
+    titulo_actual: src.title, categoria: src.category, atributos: src.attributes.map((a) => `${a.name}: ${a.value}`),
+    descripcion_actual: src.description.slice(0, 4000) || '(no tiene)', preguntas_respondidas: src.questions.map((x) => `P: ${x.q} | R: ${x.a}`),
+    atributos_que_faltan: [...src.missing.required, ...src.missing.recommended],
+  };
+  const content = `${titleAllowed ? `Escribí un título de como máximo ${max} caracteres y` : 'NO cambies el título (Mercado Libre no lo permite): devolvé "title" vacío. Escribí'} una descripción para esta publicación.${variant ? ` Es la versión ${variant + 1}: usá otra estructura de frases que la anterior, con los mismos datos.` : ''}\n\nDatos de la publicación (JSON):\n${JSON.stringify(datos)}`;
+  try {
+    const resp = await c.messages.create({
+      model: MODEL,
+      max_tokens: SUGGEST_MAX_TOKENS,
+      system: SUGGEST_SYSTEM,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: SUGGEST_SCHEMA } },
+      messages: [{ role: 'user', content }],
+    });
+    const raw = JSON.parse(textOf(resp));
+    return { raw: { title: titleAllowed ? raw.title : null, description: raw.description }, tokens: resp.usage?.output_tokens || 0 };
+  } catch (e) {
+    console.error('[rinde][ia][sugerencia]', e.message);
+    return null;
+  }
+}

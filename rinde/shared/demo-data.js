@@ -83,6 +83,8 @@ export function getDemoData() {
       competition: null,
       hist: { weeks: extra.weeks || [0, 1, 2, 3, 4, 5].map((k) => Math.max(0, Math.round(sales30 / 4.3) - (k % 2))), months: { 5: Math.round(sales90 / 3), 6: Math.round(sales90 / 3), 7: Math.round(sales90 / 4), 8: Math.round(sales90 / 4), 9: Math.round(sales90 / 3), 10: Math.round(sales90 / 3) }, rev60: Math.round((sales90 * 2) / 3) * price },
       sales180: sales90 * 2, revenue180: sales90 * 2 * price,
+      // Ventas de toda la vida (MeLi no deja cambiar el título si es mayor a 0).
+      sold_quantity: sales90 ? sales90 * 2 + Math.round(sales90 * 1.5) : 0,
     });
     if (pc != null) costs[sku] = { purchase: pc, replacement: rc };
 
@@ -115,6 +117,22 @@ export function getDemoData() {
     }
   });
 
+  // Ventas de 31 a 90 días (para el desglose por venta de la pantalla de cada publicación).
+  const older = [];
+  BASE.forEach((b, i) => {
+    const [id, , price, , sales30, sales90, , , listing, , free] = b;
+    const fee = FEES[listing];
+    for (let k = 0; k < Math.max(0, sales90 - sales30); k++) {
+      const daysAgo = 31 + Math.floor(rand() * 59);
+      older.push({
+        order_id: `2000008${String(i).padStart(2, '0')}${String(k).padStart(4, '0')}`, item_id: id, sku: 'RND-' + String(i + 1).padStart(3, '0'), qty: 1, unit_price: price,
+        date: new Date(now - daysAgo * 86400000).toISOString(),
+        fees: { commission: Math.round(price * fee.commission + (price < 33000 ? 1150 : 0)), shipping: free ? (price >= 33000 ? 8900 : 4200) : 0, financing: Math.round(price * fee.financing), taxes: Math.round(price * TAX_RATE), other: 0, fixed_fee: price < 33000 ? 1150 : 0 },
+        estimated: false, source: 'facturación',
+      });
+    }
+  });
+
   const d30 = lines.reduce((t, l) => t + l.qty * l.unit_price, 0);
   return {
     demo: true,
@@ -128,6 +146,8 @@ export function getDemoData() {
     prevReputation: '5_green',
     items,
     lines,
+    lines90: [...lines, ...older].sort((a, b) => b.date.localeCompare(a.date)),
+    sources: DEMO_SOURCES,
     costs,
     settings: { ads_manual_monthly: 120000, meta_ads_monthly: 80000, alert_email: 'vos@tutienda.com.ar', alerts_enabled: true, weekly_enabled: true },
     productAds: null,
@@ -136,6 +156,35 @@ export function getDemoData() {
     syncedAt: new Date(now - 25 * 60000).toISOString(),
   };
 }
+
+// Datos de la ficha para las sugerencias del demo (atributos con valor, descripción y preguntas respondidas).
+// Casos: 014 y 022 sin ventas (se puede sugerir título), 001 con ventas (no se puede), 015 con datos faltantes (corchetes).
+const DEMO_SOURCES = {
+  MLA1460211014: {
+    category: { name: 'Filtros para Jarras Purificadoras', max_title: 60 },
+    attributes: [{ id: 'BRAND', name: 'Marca', value: 'AquaPura' }, { id: 'MODEL', name: 'Modelo', value: 'AP-Maxi' }, { id: 'COMPATIBLE_BRANDS', name: 'Marcas compatibles', value: 'Brita' }, { id: 'COMPATIBLE_MODELS', name: 'Modelos compatibles', value: 'Maxtra' }, { id: 'UNITS_PER_PACK', name: 'Unidades por pack', value: '1' }, { id: 'FILTER_DURATION', name: 'Duración del filtro', value: '4 semanas' }],
+    description: 'Repuesto de filtro para jarra purificadora. Reduce el cloro y mejora el sabor del agua. Se cambia cada 4 semanas.',
+    questions: [{ q: '¿Sirve para la jarra Brita Marella?', a: 'Sí, es compatible con jarras que usan filtro Maxtra.' }, { q: '¿Cada cuánto hay que cambiarlo?', a: 'Cada 4 semanas aproximadamente.' }],
+  },
+  MLA1460211022: {
+    category: { name: 'Teclados Físicos', max_title: 60 },
+    attributes: [{ id: 'BRAND', name: 'Marca', value: 'Kenta' }, { id: 'MODEL', name: 'Modelo', value: 'K75 Pro' }, { id: 'KEYBOARD_SWITCH', name: 'Tipo de switch', value: 'Red' }, { id: 'CONNECTIVITY', name: 'Conectividad', value: 'Bluetooth, USB-C' }, { id: 'COLOR', name: 'Color', value: 'Negro' }, { id: 'LENGTH', name: 'Largo', value: '32 cm' }, { id: 'WIDTH', name: 'Ancho', value: '13 cm' }],
+    description: 'Teclado mecánico inalámbrico formato 75 %. Switches intercambiables en caliente (hot swap). Conexión Bluetooth o por cable USB-C.',
+    questions: [{ q: '¿Tiene ñ?', a: 'Sí, distribución en español latino con ñ.' }],
+  },
+  MLA1460211001: {
+    category: { name: 'Auriculares In-Ear', max_title: 60 },
+    attributes: [{ id: 'BRAND', name: 'Marca', value: 'Sonix' }, { id: 'MODEL', name: 'Modelo', value: 'Air 3' }, { id: 'COLOR', name: 'Color', value: 'Blanco' }, { id: 'BATTERY_LIFE', name: 'Duración de la batería', value: '6 h' }, { id: 'INCLUDED_ACCESSORIES', name: 'Accesorios incluidos', value: 'Estuche de carga, cable USB-C, 3 pares de gomitas' }],
+    description: 'Auriculares inalámbricos in ear con cancelación de ruido. Estuche de carga incluido. Conexión Bluetooth 5.3.',
+    questions: [{ q: '¿Sirven para iPhone?', a: 'Sí, se conectan por Bluetooth con cualquier celular.' }, { q: '¿Cuánto dura la batería?', a: 'Unas 6 horas de uso con una carga.' }],
+  },
+  MLA1460211015: {
+    category: { name: 'Cortinas', max_title: 60 },
+    attributes: [{ id: 'COLOR', name: 'Color', value: 'Gris' }],
+    description: '',
+    questions: [{ q: '¿Bloquea toda la luz?', a: 'Es blackout: bloquea la luz del sol.' }],
+  },
+};
 
 // Planes "escritos por la IA" para algunas publicaciones del demo (el resto usa las reglas).
 const DEMO_AI_PLANS = {
@@ -190,8 +239,8 @@ export const DEMO_SUMMARY_AI = null; // el demo arma el resumen con las mismas r
 
 // Usuarios de ejemplo para la vista previa del panel admin.
 export const DEMO_ADMIN_USERS = [
-  { id: 'u1', nickname: 'TIENDA.EJEMPLO', meli_user_id: 123456789, plan: 'rinde', created_at: '2026-10-03T14:10:00Z', plan_activated_at: '2026-10-04T10:00:00Z', free_diagnosis_used_at: '2026-10-03T14:20:00Z', last_login_at: '2026-11-02T12:30:00Z', alert_email: 'ventas@tiendaejemplo.com.ar', billing_status: 'active', payment_method: 'mp', plan_interval: 'monthly', plan_expires_at: '2026-12-01T13:10:00Z' },
-  { id: 'u2', nickname: 'ELECTRO_SUR', meli_user_id: 223344556, plan: 'free', created_at: '2026-10-21T18:44:00Z', free_diagnosis_used_at: '2026-10-21T18:52:00Z', last_login_at: '2026-10-30T09:10:00Z', alert_email: null, billing_status: 'lapsed', payment_method: 'mp', plan_interval: 'monthly', plan_expires_at: '2026-10-25T00:00:00Z' },
-  { id: 'u3', nickname: 'HOGAR-Y-DECO', meli_user_id: 334455667, plan: 'rinde', created_at: '2026-11-01T22:05:00Z', free_diagnosis_used_at: null, last_login_at: '2026-11-01T22:05:00Z', alert_email: 'hogarydeco@gmail.com', billing_status: 'trial', payment_method: 'mp', plan_interval: 'monthly', plan_expires_at: '2026-11-05T22:05:00Z' },
-  { id: 'u4', nickname: 'MOTOPARTS.BA', meli_user_id: 445566778, plan: 'rinde', created_at: '2026-09-12T11:00:00Z', plan_activated_at: '2026-09-12T15:30:00Z', free_diagnosis_used_at: '2026-09-12T11:12:00Z', last_login_at: '2026-11-02T08:01:00Z', alert_email: 'motoparts@gmail.com', billing_status: 'past_due', payment_method: 'transfer', plan_interval: 'annual', plan_expires_at: '2026-10-30T23:59:00Z', grace_until: '2026-11-04T23:59:00Z' },
+  { id: 'u1', suggestions: { total: 14, today: 3 }, nickname: 'TIENDA.EJEMPLO', meli_user_id: 123456789, plan: 'rinde', created_at: '2026-10-03T14:10:00Z', plan_activated_at: '2026-10-04T10:00:00Z', free_diagnosis_used_at: '2026-10-03T14:20:00Z', last_login_at: '2026-11-02T12:30:00Z', alert_email: 'ventas@tiendaejemplo.com.ar', billing_status: 'active', payment_method: 'mp', plan_interval: 'monthly', plan_expires_at: '2026-12-01T13:10:00Z' },
+  { id: 'u2', suggestions: { total: 1, today: 0 }, nickname: 'ELECTRO_SUR', meli_user_id: 223344556, plan: 'free', created_at: '2026-10-21T18:44:00Z', free_diagnosis_used_at: '2026-10-21T18:52:00Z', last_login_at: '2026-10-30T09:10:00Z', alert_email: null, billing_status: 'lapsed', payment_method: 'mp', plan_interval: 'monthly', plan_expires_at: '2026-10-25T00:00:00Z' },
+  { id: 'u3', suggestions: { total: 0, today: 0 }, nickname: 'HOGAR-Y-DECO', meli_user_id: 334455667, plan: 'rinde', created_at: '2026-11-01T22:05:00Z', free_diagnosis_used_at: null, last_login_at: '2026-11-01T22:05:00Z', alert_email: 'hogarydeco@gmail.com', billing_status: 'trial', payment_method: 'mp', plan_interval: 'monthly', plan_expires_at: '2026-11-05T22:05:00Z' },
+  { id: 'u4', suggestions: { total: 6, today: 0 }, nickname: 'MOTOPARTS.BA', meli_user_id: 445566778, plan: 'rinde', created_at: '2026-09-12T11:00:00Z', plan_activated_at: '2026-09-12T15:30:00Z', free_diagnosis_used_at: '2026-09-12T11:12:00Z', last_login_at: '2026-11-02T08:01:00Z', alert_email: 'motoparts@gmail.com', billing_status: 'past_due', payment_method: 'transfer', plan_interval: 'annual', plan_expires_at: '2026-10-30T23:59:00Z', grace_until: '2026-11-04T23:59:00Z' },
 ];

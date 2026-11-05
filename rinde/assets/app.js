@@ -8,6 +8,9 @@ import { scoreAllows, conflictOf } from '../shared/plan-guard.js';
 const MIN_VISITS_CONV = 30; // igual que la nota: con menos visitas la conversión no dice nada
 import { getCampaignsDemo } from '../shared/campaigns-demo.js';
 import { buildModel, buildRuleSummary, costKey } from '../shared/model.js';
+import { saleRows, itemStates, searchItems } from '../shared/item-detail.js';
+import { sourceOf, ruleSuggestion, NOTE_FIXED, SUGGEST_LIMITS } from '../shared/suggest.js';
+import { SEASONS } from '../shared/config.js';
 
 const DEMO = location.pathname.startsWith('/demo') || new URLSearchParams(location.search).has('demo');
 const $app = document.getElementById('app');
@@ -27,6 +30,11 @@ const S = {
   settings: {},
   productAds: false,
   history: [],
+  item: {},      // por publicación: { sales, suggestion, usage, loading, error }
+  sugg: {},      // estado de la sugerencia por publicación: { loading, error }
+  back: null,    // pantalla desde la que se abrió el detalle (para "Volver")
+  scroll: {},    // posición de scroll por pantalla
+  demoSugg: 0,   // demo: sugerencias generadas hoy
 };
 
 // ─────────────────────────────── API ───────────────────────────────────────
@@ -124,8 +132,25 @@ function header() {
 }
 
 function currentRoute() {
-  const r = (location.hash || '#/diagnostico').replace('#/', '');
+  const r = (location.hash || '#/diagnostico').replace('#/', '').split('?')[0];
+  if (/^publicacion\/[A-Za-z0-9]+$/.test(r)) return 'publicacion';
   return ['diagnostico', 'publicaciones', 'campanas', 'rentabilidad', 'alertas', 'conectando'].includes(r) ? r : 'diagnostico';
+}
+const routeItemId = () => ((location.hash.match(/^#\/publicacion\/([A-Za-z0-9]+)/) || [])[1] || '').toUpperCase();
+const routeParam = (k) => new URLSearchParams((location.hash.split('?')[1]) || '').get(k);
+/** Link al detalle de una publicación de la cuenta (o a Mercado Libre si no está en el diagnóstico). */
+function itemLink(id, title, cls = '') {
+  const inModel = id && S.model?.rows?.some((r) => r.it.id === id);
+  if (inModel) return `<a class="ilink ${cls}" href="#/publicacion/${esc(id)}">${esc(title)}</a>`;
+  const r = S.model?.rows?.find((x) => x.it.id === id);
+  const pl = r?.it.permalink;
+  return pl && pl !== '#' ? `<a class="${cls}" href="${esc(pl)}" target="_blank" rel="noopener">${esc(title)}</a>` : esc(title);
+}
+function searchBox() {
+  return `<div class="isearch" role="search"><label class="sr" for="qpub">Buscá una publicación</label>
+    <span class="isearch-ico" aria-hidden="true">${I.search}</span>
+    <input id="qpub" type="search" autocomplete="off" placeholder="Buscá una publicación (título o número MLA)" aria-controls="qpub-res" aria-expanded="false">
+    <ul id="qpub-res" class="isearch-res" role="listbox" hidden></ul></div>`;
 }
 
 function connectionBanner() {
@@ -161,11 +186,15 @@ function render() {
   else if (route === 'publicaciones') body = listingsView();
   else if (route === 'campanas') body = campaignsView();
   else if (route === 'alertas') body = alertsView();
+  else if (route === 'publicacion') body = detailView(routeItemId());
   else body = diagnosisView();
-  $app.innerHTML = header() + connectionBanner() + billingBanner() + `<main class="wrap${route === 'rentabilidad' ? ' wide' : ''}">${body}</main>
+  $app.innerHTML = header() + connectionBanner() + billingBanner() + `<main class="wrap${route === 'rentabilidad' ? ' wide' : ''}">${searchBox()}${body}</main>
   <footer class="footer"><div class="wrap"><span>Rinde · un servicio de Innovasmart · solo lectura: nunca modificamos tu cuenta.</span><span><a href="/privacidad">Privacidad</a> · <a href="/terminos">Términos</a></span></div></footer>`;
   hydrateIcons($app);
   bind(route);
+  bindSearch();
+  if (S.scroll[location.hash] != null) { window.scrollTo(0, S.scroll[location.hash]); }
+  else if (route === 'publicacion') window.scrollTo(0, 0);
 }
 
 // ─────────────────────────────── Diagnóstico ───────────────────────────────
@@ -230,7 +259,7 @@ function topList(top) {
   if (!top?.length) return '';
   const lis = top.map((t) => t.more
     ? `<li class="more">y ${t.more} más</li>`
-    : `<li>${t.permalink && t.permalink !== '#' ? `<a href="${esc(t.permalink)}" target="_blank" rel="noopener">${esc(t.title)}</a>` : esc(t.title)} <span class="sold">${t.sold ? `${t.sold} vendida${t.sold === 1 ? '' : 's'} en 6 meses` : 'sin ventas en 6 meses'}</span></li>`).join('');
+    : `<li>${itemLink(t.id, t.title)} <span class="sold">${t.sold ? `${t.sold} vendida${t.sold === 1 ? '' : 's'} en 6 meses` : 'sin ventas en 6 meses'}</span></li>`).join('');
   return `<ol class="top-items">${lis}</ol>`;
 }
 
@@ -277,12 +306,13 @@ function chargesDetail(ch) {
   return `<span class="tiny">${esc(FEE_SRC[ch.source] || 'según Mercado Libre')} · ${parts.join(' · ')}</span>${range}`;
 }
 
+const campTitle = (x) => itemLink(x.item_id, x.item?.title || x.item_id);
 function promoCard(o, e, key) {
   const it = o.item;
   const hasCost = e.cost != null;
   if (e.noFees) {
     return `<article class="camp-card">
-      <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div><span class="tag tag-neutral">Sin veredicto</span></div>
+      <div class="camp-top"><div class="camp-title">${campTitle(o)}</div><span class="tag tag-neutral">Sin veredicto</span></div>
       <div class="tiny muted">${esc(PROMO_TYPE[o.type] || o.type)} · ${esc(o.name)} · ${o.status === 'started' ? 'activa' : 'te la ofrecen'}</div>
       <div class="camp-grid"><div><span>Precio</span><b>${fmtMoney(o.price_today)} → ${fmtMoney(o.promo_price)}</b></div></div>
       <p class="small" style="margin:6px 0 0">${esc(e.note)}</p>
@@ -290,7 +320,7 @@ function promoCard(o, e, key) {
   }
   const quedan = (x) => fmtMoney(hasCost ? x.profit : x.beforeCost);
   return `<article class="camp-card">
-    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : `<span class="tag tag-neutral">${e.noFees ? 'Sin veredicto' : 'Sin veredicto: falta el costo'}</span>`}</div>
+    <div class="camp-top"><div class="camp-title">${campTitle(o)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : `<span class="tag tag-neutral">${e.noFees ? 'Sin veredicto' : 'Sin veredicto: falta el costo'}</span>`}</div>
     <div class="tiny muted">${esc(PROMO_TYPE[o.type] || o.type)} · ${esc(o.name)} · ${o.status === 'started' ? 'activa' : 'te la ofrecen'}${e.contribution ? ` · Mercado Libre aporta ${fmtMoney(e.contribution)} por venta` : ''}</div>
     <div class="camp-grid">
       <div><span>Precio</span><b>${fmtMoney(o.price_today)} → ${fmtMoney(o.promo_price)}</b></div>
@@ -307,7 +337,7 @@ function promoCard(o, e, key) {
 function adsCardNoMetrics(a) {
   const it = a.item;
   return `<article class="camp-card">
-    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div><span class="tag tag-neutral">Sin métricas</span></div>
+    <div class="camp-top"><div class="camp-title">${campTitle(a)}</div><span class="tag tag-neutral">Sin métricas</span></div>
     <div class="tiny muted">${esc(a.campaign || 'Product Ads')}${a.status ? ` · ${esc(a.status === 'active' ? 'activa' : a.status)}` : ''}</div>
     <p class="small" style="margin:6px 0 0">Mercado Libre no devolvió las métricas de este aviso (faltan: ${esc((a.metricsMissing || []).map((k) => MISSING_LABEL[k] || k).join(', '))}). No mostramos ceros ni damos veredicto.</p>
   </article>`;
@@ -317,7 +347,7 @@ function adsCard(a, e, key) {
   const it = a.item;
   const split = a.direct_amount != null && a.indirect_amount != null;
   return `<article class="camp-card">
-    <div class="camp-top"><div class="camp-title">${it.permalink ? `<a href="${esc(it.permalink)}" target="_blank" rel="noopener">${esc(it.title)}</a>` : esc(it.title)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : `<span class="tag tag-neutral">${e.noFees ? 'Sin veredicto' : 'Sin veredicto: falta el costo'}</span>`}</div>
+    <div class="camp-top"><div class="camp-title">${campTitle(a)}</div>${e.label ? `<span class="tag ${VERDICT_TAG[e.verdict] || 'tag-neutral'}">${esc(e.label)}</span>` : `<span class="tag tag-neutral">${e.noFees ? 'Sin veredicto' : 'Sin veredicto: falta el costo'}</span>`}</div>
     <div class="tiny muted">${esc(a.campaign || 'Product Ads')} · últimos 30 días según Mercado Libre</div>
     <div class="camp-grid">
       <div><span>Gasto</span><b>${fmtMoney(a.cost)}</b></div>
@@ -342,7 +372,7 @@ function idleBox(sp) {
     ? `${nA} aviso${nA === 1 ? '' : 's'} no gastaron en los últimos 30 días`.replace('1 aviso no gastaron', '1 aviso no gastó')
     : `${nC} campaña${nC === 1 ? '' : 's'} no gastaron en los últimos 30 días`.replace('1 campaña no gastaron', '1 campaña no gastó');
   const camps = sp.idleCampaigns.map((x) => { const st = campaignStateText(x); return `<li><b>${/^campa/i.test(x.name) ? '' : 'Campaña '}${esc(x.name)}</b>: gasto $0 en 30 días${st ? ` · ${esc(st)}` : ''}.</li>`; }).join('');
-  const ads = sp.idleAds.map(({ a }) => `<li>${a.item?.permalink ? `<a href="${esc(a.item.permalink)}" target="_blank" rel="noopener">${esc(a.item.title)}</a>` : esc(a.item?.title || a.item_id)}${a.status ? ` <span class="muted">· ${esc(a.status === 'active' ? 'activo' : a.status === 'paused' ? 'pausado' : a.status)}</span>` : ''}</li>`).join('');
+  const ads = sp.idleAds.map(({ a }) => `<li>${campTitle(a)}${a.status ? ` <span class="muted">· ${esc(a.status === 'active' ? 'activo' : a.status === 'paused' ? 'pausado' : a.status)}</span>` : ''}</li>`).join('');
   return `<details class="camp-idle card"><summary>${I.info}<span><b>${esc(head)}</b>${nA && nC ? ` <span class="small muted">(y ${nC} campaña${nC === 1 ? '' : 's'} sin gasto)</span>` : ''} <span class="small muted">· ver cuáles</span></span></summary>
     <p class="small muted" style="margin:8px 0 6px">Según Mercado Libre: gasto $0 y ninguna venta atribuida. No hay nada que evaluar hasta que gasten.</p>
     ${camps ? `<ul class="small">${camps}</ul>` : ''}${ads ? `<ul class="small">${ads}</ul>` : ''}</details>`;
@@ -390,7 +420,7 @@ function alertsBox() {
   const top = list.slice(0, 3);
   return `<section class="alerts-box" aria-label="Alertas nuevas">
     <div class="ab-head">${I.bell}<b>Tenés ${list.length} alerta${list.length === 1 ? '' : 's'} nueva${list.length === 1 ? '' : 's'}</b><a class="btn btn-light btn-sm" href="#/alertas">Ver alertas</a></div>
-    <ul>${top.map((a) => `<li><span class="tag ${a.severity === 'bad' ? 'tag-bad' : 'tag-warn'}">${esc(ALERT_LABELS[a.kind] || a.kind)}</span> ${a.title ? `<b>${esc(a.title)}</b> · ` : ''}<span class="small">${esc(a.message)}</span></li>`).join('')}${list.length > top.length ? `<li class="small muted">y ${list.length - top.length} más</li>` : ''}</ul>
+    <ul>${top.map((a) => `<li><span class="tag ${a.severity === 'bad' ? 'tag-bad' : 'tag-warn'}">${esc(ALERT_LABELS[a.kind] || a.kind)}</span> ${a.title ? `<b>${itemLink(a.item_id, a.title)}</b> · ` : ''}<span class="small">${esc(a.message)}</span></li>`).join('')}${list.length > top.length ? `<li class="small muted">y ${list.length - top.length} más</li>` : ''}</ul>
   </section>`;
 }
 
@@ -416,8 +446,8 @@ function seasonBox(m) {
 function listingRow(r) {
   const sc = r.score;
   return `<article class="lrow">
-    <div class="lrow-top">${scoreBadge(sc)}<div class="lrow-title">${r.it.permalink && r.it.permalink !== '#' ? `<a href="${esc(r.it.permalink)}" target="_blank" rel="noopener">${esc(r.it.title)}</a>` : esc(r.it.title)}</div>${catTag(r.group)}</div>
-    ${sc.improvements.length ? `<ol class="lrow-fix">${sc.improvements.map((x) => `<li>${esc(x.text)} <span class="muted">${x.suggestion ? 'sugerencia' : '+' + x.gain}</span></li>`).join('')}</ol>` : '<p class="small muted" style="margin:6px 0 0">Bien armada. Mantenela así.</p>'}
+    <div class="lrow-top">${scoreBadge(sc)}<div class="lrow-title">${itemLink(r.it.id, r.it.title)}</div>${catTag(r.group)}</div>
+    ${sc.improvements.length ? `<ol class="lrow-fix">${sc.improvements.map((x) => `<li>${esc(x.text)} <span class="muted">${x.suggestion ? 'sugerencia' : '+' + x.gain}</span>${genBtn(r.it.id, x.key)}</li>`).join('')}</ol>` : '<p class="small muted" style="margin:6px 0 0">Bien armada. Mantenela así.</p>'}
     <details class="lrow-more"><summary class="small">Cómo se calcula</summary><ul class="small">${sc.criteria.map((c) => `<li>${esc(c.label)} (peso ${Math.round(c.weight)}): ${esc(c.note)} → ${Math.round(c.value * c.weight)}/${Math.round(c.weight)}</li>`).join('')}</ul></details>
   </article>`;
 }
@@ -448,7 +478,7 @@ function listingsView() {
     </section>
     <section class="card">
       <h3 style="margin-top:0">Tus 10 peores publicaciones</h3>
-      <ol class="worst">${worst.map((r) => `<li>${scoreBadge(r.score)} <a href="#it-l-${esc(r.it.id)}" data-jump="${esc(r.it.id)}">${esc(r.it.title)}</a></li>`).join('')}</ol>
+      <ol class="worst">${worst.map((r) => `<li>${scoreBadge(r.score)} ${itemLink(r.it.id, r.it.title)}</li>`).join('')}</ol>
     </section>
   </div>
   <div class="lfilters">
@@ -471,7 +501,7 @@ function itemCard(r) {
   const reasons = (cls.reasons || []).filter((x) => x.text && !conflictOf({ title: x.text }, allow));
   return `<details class="item tone-${GROUPS[r.group].tone}" id="it-${esc(it.id)}">
     <summary>
-      <div class="i-top"><div class="i-title">${esc(it.title)}</div><span style="display:flex;gap:6px;flex-wrap:wrap">${scoreBadge(r.score)}${catTag(r.group)}</span></div>
+      <div class="i-top"><div class="i-title">${itemLink(it.id, it.title)}</div><span style="display:flex;gap:6px;flex-wrap:wrap">${scoreBadge(r.score)}${catTag(r.group)}</span></div>
       <div class="i-meta"><span>Precio <b>${fmtMoney(it.price)}</b></span>${it.visits30 != null ? `<span>Visitas 30 d <b>${it.visits30.toLocaleString('es-AR')}</b></span>` : ''}<span>Ventas 30 d <b>${it.sales30 ?? 0}</b></span>${conv != null && (it.visits30 || 0) >= MIN_VISITS_CONV ? `<span>Conversión <b>${fmtPct(conv)}</b></span>` : ''}</div>
       <div class="i-head">${plan.verdict === 'liquidar' ? `<span class="tag tag-bad">${I.x} Sin salida</span> ` : ''}${esc(plan.headline)}</div>
       <span class="i-more">Ver plan de acción ${I.chevron}</span>
@@ -487,14 +517,259 @@ function itemCard(r) {
         <div class="fact"><span>Ventas 90 días</span><b>${it.sales90 ?? 0}</b></div>
         ${it.pictures_count != null ? `<div class="fact"><span>Fotos</span><b>${it.pictures_count}</b></div>` : ''}
       </div>
-      ${r.score?.improvements?.length ? `<p class="sec-label">Mejoras que más suben la nota (${r.score.score}/100)</p><ul class="reasons">${r.score.improvements.map((x) => `<li>${esc(x.text)} <span class="muted small">(${x.suggestion ? 'sugerencia' : '+' + x.gain})</span></li>`).join('')}</ul>` : ''}
+      ${r.score?.improvements?.length ? `<p class="sec-label">Mejoras que más suben la nota (${r.score.score}/100)</p><ul class="reasons">${r.score.improvements.map((x) => `<li>${esc(x.text)} <span class="muted small">(${x.suggestion ? 'sugerencia' : '+' + x.gain})</span>${genBtn(it.id, x.key)}</li>`).join('')}</ul>` : ''}
       ${reasons.length ? `<p class="sec-label">Qué detectamos</p><ul class="reasons">${reasons.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul>` : ''}
       ${plan.actions?.length ? `<p class="sec-label">Plan de acción · de mayor a menor impacto</p>
       <ol class="actions">${plan.actions.map((a) => `<li><b>${esc(a.title)}<span class="impact impact-${esc(a.impact)}">impacto ${esc(a.impact)}</span></b><p>${esc(a.detail)}</p></li>`).join('')}</ol>` : ''}
-      <div class="source" style="margin-bottom:12px">${plan.source === 'ia' ? 'Plan redactado con IA usando solo tus datos y las recomendaciones de Mercado Libre.' : 'Plan armado con reglas a partir de tus datos.'} ${it.permalink && it.permalink !== '#' ? `· <a href="${esc(it.permalink)}" target="_blank" rel="noopener">Ver publicación</a>` : ''}</div>
+      <div class="source" style="margin-bottom:12px">${plan.source === 'ia' ? 'Plan redactado con IA usando solo tus datos y las recomendaciones de Mercado Libre.' : 'Plan armado con reglas a partir de tus datos.'} · <a href="#/publicacion/${esc(it.id)}">Ver el detalle completo</a>${it.permalink && it.permalink !== '#' ? ` · <a href="${esc(it.permalink)}" target="_blank" rel="noopener">Ver en Mercado Libre</a>` : ''}</div>
       ${cls.category !== 'SANA' ? helpBox() : ''}
     </div>
   </details>`;
+}
+
+// ─────────────────────────────── Detalle de una publicación ────────────────
+const TEXT_KEYS = new Set(['titulo', 'descripcion', 'atributos']);
+const genBtn = (id, key) => (TEXT_KEYS.has(key) ? ` <button class="btn btn-light btn-xs" type="button" data-gen="${esc(id)}">${I.sparkle} Generar sugerencia</button>` : '');
+const isMobile = () => window.matchMedia('(max-width: 759px)').matches;
+
+/** Datos extra de la publicación: ventas de 90 días (desglose) y la última sugerencia guardada. */
+function loadItem(id) {
+  if (S.item[id]) return;
+  if (DEMO) {
+    const lines = (S.demoData.lines90 || []).filter((l) => l.item_id === id);
+    S.item[id] = { sales: lines, suggestion: null, usage: demoUsage() };
+    return;
+  }
+  S.item[id] = { loading: true };
+  api(`/api/item?id=${encodeURIComponent(id)}`).then((d) => { S.item[id] = d; if (routeItemId() === id) render(); })
+    .catch((e) => { S.item[id] = { error: e.message }; if (routeItemId() === id) render(); });
+}
+const demoUsage = () => ({ paid: true, today: S.demoSugg, limit: SUGGEST_LIMITS.PAID_PER_DAY, left: Math.max(0, SUGGEST_LIMITS.PAID_PER_DAY - S.demoSugg), allowed: S.demoSugg < SUGGEST_LIMITS.PAID_PER_DAY });
+
+function block(key, title, body, open) {
+  const isOpen = S.blkOpen?.[key] ?? open; // lo que el usuario abrió o cerró se respeta al redibujar
+  return `<details class="blk" id="blk-${key}" data-blk="${key}" ${isOpen ? 'open' : ''}><summary><h2>${title}</h2>${I.chevron}</summary><div class="blk-body">${body}</div></details>`;
+}
+
+function detailView(id) {
+  const r = S.model.rows.find((x) => x.it.id === id);
+  const back = `<button class="btn btn-ghost btn-sm" id="back" type="button">← Volver</button>`;
+  if (!r) return `<div class="d-nav">${back}</div><div class="notice notice-warn">${I.info}<div><b>No encontramos la publicación ${esc(id)} en tu cuenta.</b> Puede que ya no esté activa ni pausada, o que sea de otra cuenta. Buscala arriba por título o número.</div></div>`;
+  loadItem(id);
+  const { it, score: sc, plan, profit } = r;
+  const x = S.item[id] || {};
+  const losing = profit.hasCost && profit.units > 0 && profit.net < 0;
+  const main = losing ? 'plata' : 'nota';
+  const open = (k) => !isMobile() || k === main;
+  const states = itemStates(it, r.group).map(([l, t]) => `<span class="tag tag-${t === 'ok' ? 'ok' : t === 'warn' ? 'warn' : t === 'bad' ? 'bad' : 'neutral'}">${esc(l)}</span>`).join(' ');
+  const pl = it.permalink && it.permalink !== '#' ? it.permalink : null;
+
+  // a) Encabezado (siempre visible)
+  const head = `<section class="d-head card">
+    <div class="d-photo">${it.thumbnail ? `<img src="${esc(it.thumbnail)}" alt="" loading="lazy">` : `<span class="d-noph" aria-hidden="true">${I.tag}</span>`}</div>
+    <div class="d-info">
+      <h1 class="d-title">${esc(it.title)}</h1>
+      <div class="d-price num">${fmtMoney(it.price)}</div>
+      <div class="d-tags">${states} ${catTag(r.group)}</div>
+      <div class="tiny muted">${esc(it.id)} · grupo del diagnóstico: ${esc(GROUPS[r.group].label)}</div>
+      ${pl ? `<a class="btn btn-light btn-sm" style="margin-top:8px" href="${esc(pl)}" target="_blank" rel="noopener">Ver en Mercado Libre ↗</a>` : DEMO ? '<div class="tiny muted" style="margin-top:6px">En el demo no hay link a Mercado Libre (publicación de ejemplo).</div>' : ''}
+    </div></section>`;
+
+  // b) Nota
+  const nota = sc.score == null
+    ? `<p class="small muted">No pudimos calcular la nota: Mercado Libre no devolvió los datos de la ficha de esta publicación.</p>`
+    : `<div class="d-score">${scoreBadge(sc)}<span class="small muted">Rojo menos de 50 · amarillo 50 a 75 · verde más de 75</span></div>
+      ${sc.improvements.length ? `<p class="sec-label">Mejoras ordenadas (las que más suben la nota primero)</p><ol class="reasons">${sc.improvements.map((m) => `<li>${esc(m.text)} <span class="muted small">(${m.suggestion ? 'sugerencia' : '+' + m.gain})</span>${TEXT_KEYS.has(m.key) ? ` <button class="btn btn-light btn-xs" type="button" data-gen-here="${esc(m.key)}">${I.sparkle} Generar sugerencia</button>` : ''}</li>`).join('')}</ol>` : '<p class="small">Bien armada. Mantenela así.</p>'}
+      <details class="lrow-more"><summary class="small">Cómo se calcula</summary><ul class="small">${sc.criteria.map((c) => `<li>${esc(c.label)} (peso ${Math.round(c.weight)}): ${esc(c.note)} → ${Math.round(c.value * c.weight)}/${Math.round(c.weight)}</li>`).join('')}</ul></details>`;
+
+  // c) Números
+  const conv = conversion(it);
+  const fact = (l, v, sub = '') => `<div class="fact"><span>${l}</span><b>${v}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
+  const nums = `<div class="facts">
+    ${it.available_quantity != null ? fact('Stock', it.available_quantity) : ''}
+    ${it.visits30 != null ? fact('Visitas 30 días', it.visits30.toLocaleString('es-AR')) : ''}
+    ${fact('Ventas 30 días', it.sales30 ?? 0)}${fact('Ventas 90 días', it.sales90 ?? 0)}${fact('Ventas 180 días', it.sales180 ?? it.sales90 ?? 0)}
+    ${conv != null && (it.visits30 || 0) >= MIN_VISITS_CONV ? fact('Conversión', fmtPct(conv), 'ventas / visitas, 30 días') : ''}
+    ${it.listing_type ? fact('Tipo de publicación', esc(LISTING_LABEL[it.listing_type] || it.listing_type)) : ''}
+    ${fact('Envío', shipLabel(it), it.shipping?.free_shipping ? 'con envío gratis' : 'sin envío gratis')}
+    ${it.pictures_count != null ? fact('Fotos', it.pictures_count) : ''}
+    ${fact('Preguntas sin responder', it.questions_unanswered ?? 0)}
+  </div>${conv != null && (it.visits30 || 0) < MIN_VISITS_CONV && it.visits30 != null ? `<p class="tiny muted">La conversión aparece con ${MIN_VISITS_CONV} visitas o más en 30 días (tiene ${it.visits30}).</p>` : ''}`;
+
+  // d) Plata
+  const plata = moneyBlock(r, x);
+
+  // e) Publicidad y campañas
+  let camp = '';
+  if (DEMO || S.paid) {
+    loadCampaigns();
+    const c = S.camp;
+    if (c && !c.loading && !c.error && !c.preview) {
+      const ev = evaluateAll(c);
+      const promos = ev.promos.filter(({ o }) => o.item_id === id).map(({ o, e }, i) => promoCard(o, e, 'dp' + i));
+      const ads = ev.ads.filter(({ a }) => a.item_id === id).map(({ a, e }, i) => (a.noMetrics ? adsCardNoMetrics(a) : adsCard(a, e, 'da' + i)));
+      if (promos.length || ads.length) camp = block('camp', 'Publicidad y campañas', `${promos.length ? `<h3 class="camp-h">Promociones</h3><div class="camp-list">${promos.join('')}</div>` : ''}${ads.length ? `<h3 class="camp-h">Publicidad (Product Ads)</h3><div class="camp-list">${ads.join('')}</div>` : ''}`, open('camp'));
+    } else if (c?.loading) camp = block('camp', 'Publicidad y campañas', `<p class="small muted">${I.loader.replace('<svg', '<svg class="spin"')} Leyendo campañas y publicidad de esta publicación…</p>`, open('camp'));
+  }
+
+  // f) Full/Flex y temporada
+  const extras = [];
+  if (r.ship) extras.push(`<div class="notice notice-info">${I.truck || I.info}<div><b>${esc(r.ship.title)}.</b> ${esc(r.ship.text)}</div></div>`);
+  if (r.season) { const cfg = SEASONS[r.season.season]; extras.push(`<div class="notice notice-info">${I.calendar}<div><b>Producto de ${esc(r.season.season)}.</b> Hoy está fuera de temporada: no repongas ahora. Preparala un mes antes (${esc(cfg?.prepare || '')}).</div></div>`); }
+
+  // g) Plan
+  const planB = `${plan.headline ? `<p><b>${esc(plan.headline)}</b></p>` : ''}${plan.actions?.length ? `<ol class="actions">${plan.actions.map((a) => `<li><b>${esc(a.title)}<span class="impact impact-${esc(a.impact)}">impacto ${esc(a.impact)}</span></b><p>${esc(a.detail)}</p></li>`).join('')}</ol>` : '<p class="small">No hay acciones pendientes para esta publicación.</p>'}
+    <div class="source">${plan.source === 'ia' ? 'Plan redactado con IA usando solo tus datos.' : 'Plan armado con reglas a partir de tus datos.'}</div>`;
+
+  return `<div class="d-nav">${back}<span class="tiny muted">Detalle de la publicación · link para compartir: <code>${esc(location.pathname)}#/publicacion/${esc(id)}</code></span></div>
+  ${head}
+  ${block('nota', `Nota de la publicación${sc.score != null ? ` · ${sc.score}/100` : ''}`, nota, open('nota'))}
+  ${block('numeros', 'Números', nums, open('numeros'))}
+  ${block('plata', 'Desglose de plata por venta', plata, open('plata'))}
+  ${camp}
+  ${extras.length ? block('envio', r.ship && r.season ? 'Full/Flex y temporada' : r.ship ? 'Full / Flex' : 'Temporada', extras.join(''), open('envio')) : ''}
+  ${block('plan', 'Plan de acción', planB, open('plan'))}
+  ${block('sugerencias', 'Sugerencias para copiar y pegar', suggestionBlock(r, x), open('sugerencias'))}`;
+}
+
+function moneyBlock(r, x) {
+  const { it } = r;
+  if (!DEMO && !S.paid) return `<div class="notice notice-info">${I.lock}<div><b>El desglose de plata es parte del Plan Rinde.</b> Por cada venta: comisión, cargo fijo, cuotas, envío, retenciones, publicidad, costo y cuánto te quedó. <a href="/suscribirme">Ver el Plan Rinde</a></div></div>`;
+  if (x.loading) return `<p class="small muted">${I.loader.replace('<svg', '<svg class="spin"')} Leyendo tus ventas de esta publicación…</p>`;
+  if (x.error) return `<div class="notice notice-warn">${I.info}<div>${esc(x.error)}</div></div>`;
+  const costForm = `<form class="camp-cost d-cost" data-sku="${esc(costKey(it))}"><label class="small" for="dcost">Costo del producto (por unidad)</label><input id="dcost" inputmode="decimal" placeholder="$ por unidad" value="${r.cost?.purchase ?? ''}"><button class="btn btn-light btn-sm" type="submit">Guardar costo</button></form>`;
+  const adsPerUnit = r.profit.units ? (r.profit.ads || 0) / r.profit.units : 0;
+  const d = saleRows(x.sales || [], { cost: r.cost, adsPerUnit });
+  if (!d.units) return `<p class="small">Sin ventas en los últimos 90 días: el desglose aparece cuando vendas.</p>${!d.hasCost ? `<p class="small muted">Podés dejar cargado el costo, así el día que vendas ya ves cuánto te quedó.</p>${costForm}` : ''}`;
+  const m = (v) => fmtMoney(v);
+  const left = (v, bc) => (v == null ? `<span class="muted">${m(bc)} antes del costo</span>` : `<b class="${v < 0 ? 'neg' : 'pos'}">${m(v)}</b>`);
+  const a = d.avg;
+  const cell = (k, v) => `<div class="mrow"><span>${k}</span><b>${v}</b></div>`;
+  const avgCard = `<div class="d-avg card">
+    <div class="label">Promedio por unidad · ${d.units} vendida${d.units === 1 ? '' : 's'} en 90 días</div>
+    <div class="mgrid">${cell('Precio', m(a.price))}${cell('Comisión', '−' + m(a.commission))}${a.fixed ? cell('Cargo fijo', '−' + m(a.fixed)) : ''}${a.financing ? cell('Cuotas', '−' + m(a.financing)) : ''}${cell('Envío', a.shipping ? '−' + m(a.shipping) : m(0))}${cell('Retenciones', a.taxes ? '−' + m(a.taxes) : m(0))}${a.other ? cell('Otros cargos', '−' + m(a.other)) : ''}${cell('Publicidad', a.ads ? '−' + m(a.ads) : m(0))}${cell('Costo del producto', a.cost != null ? '−' + m(a.cost) : 'sin cargar')}
+    <div class="mrow total"><span>Te quedó</span>${left(a.left, a.beforeCost)}</div></div>
+  </div>`;
+  const rowsHtml = d.rows.map((s) => `<tr><td class="num">${new Date(s.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}${s.qty > 1 ? ` · ${s.qty} u` : ''}${s.source !== 'facturación' ? ' <span class="tag tag-neutral" style="padding:0 6px">estimado</span>' : ''}</td>
+    <td class="num">${m(s.price)}</td><td class="num">${m(s.commission)}</td><td class="num">${m(s.fixed)}</td><td class="num">${m(s.financing)}</td><td class="num">${s.shippingUnknown ? '<span class="muted small">no incluido</span>' : m(s.shipping)}</td><td class="num">${m(s.taxes)}</td><td class="num">${m(s.ads)}</td><td class="num">${s.cost != null ? m(s.cost) : '<span class="muted small">sin cargar</span>'}</td><td class="num">${left(s.left, s.beforeCost)}</td></tr>`).join('');
+  const cardsHtml = d.rows.slice(0, 40).map((s) => `<div class="pc"><div class="row"><span>${new Date(s.date).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}${s.qty > 1 ? ` · ${s.qty} u` : ''}${s.source !== 'facturación' ? ' · estimado' : ''}</span><b>${m(s.price)}</b></div>
+    <div class="row"><span>Cargos de Mercado Libre</span><b>−${m(s.charges)}</b></div><div class="row tiny muted"><span>comisión ${m(s.commission)} · fijo ${m(s.fixed)} · cuotas ${m(s.financing)} · envío ${s.shippingUnknown ? 'no incluido' : m(s.shipping)} · retenciones ${m(s.taxes)}</span></div>
+    <div class="row"><span>Publicidad</span><b>−${m(s.ads)}</b></div><div class="row"><span>Costo</span><b>${s.cost != null ? '−' + m(s.cost) : 'sin cargar'}</b></div><div class="row"><span>Te quedó</span>${left(s.left, s.beforeCost)}</div></div>`).join('');
+  return `${avgCard}
+    ${!d.hasCost ? `<div class="notice notice-warn" style="margin:10px 0">${I.info}<div><b>Cargá el costo para ver cuánto te quedó.</b> Sin el costo te mostramos lo que queda antes de pagar el producto.</div></div>${costForm}` : ''}
+    <div class="table-wrap desktop-only" style="margin-top:12px"><table class="data"><thead><tr><th>Venta</th><th>Precio</th><th>Comisión</th><th>Cargo fijo</th><th>Cuotas</th><th>Envío</th><th>Retenciones</th><th>Publicidad</th><th>Costo</th><th>Te quedó</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+    <div class="pcards mobile-only" style="margin-top:10px">${cardsHtml}${d.rows.length > 40 ? `<p class="tiny muted">Se muestran las 40 ventas más nuevas de ${d.rows.length}.</p>` : ''}</div>
+    <p class="tiny muted" style="margin-top:8px">Cargos según la facturación de Mercado Libre. "Estimado": la venta todavía no figura en la facturación y usamos los datos de la orden${d.shippingUnknown ? '; en esas el envío no está incluido porque la orden no lo informa' : ''}. La publicidad es el gasto del último mes repartido por unidad vendida.</p>`;
+}
+
+function suggestionBlock(r, x) {
+  const id = r.it.id;
+  const st = S.sugg[id] || {};
+  const data = st.data || x.suggestion || null;
+  const usage = st.usage || x.usage || (DEMO ? demoUsage() : null);
+  const locked = usage && !usage.allowed && !data;
+  const lockMsg = usage && !usage.paid ? (usage.reason === 'otra_publicacion' ? 'Ya usaste la prueba gratis en otra publicación.' : usage.reason === 'agotado' ? 'Ya usaste las sugerencias de prueba.' : '') : '';
+  const intro = `<p class="small muted" style="margin-top:0">Título y descripción armados solo con los datos de tu publicación (título, atributos, descripción, categoría y preguntas respondidas). La IA se usa solo cuando tocás el botón. Los atributos que faltan no se inventan: te decimos cuáles completar.</p>`;
+  const fixed = `<p class="d-fixed small">${I.info} ${esc(NOTE_FIXED)}</p>`;
+  const usageLine = usage ? `<p class="tiny muted">${usage.paid ? `Plan Rinde: te quedan ${usage.left} de ${usage.limit} sugerencias hoy.` : `Plan gratis: podés probarlo en 1 publicación${usage.trialItem ? '' : ' (la que elijas)'}.`}</p>` : '';
+  if (st.loading) return intro + `<p>${I.loader.replace('<svg', '<svg class="spin"')} Armando la sugerencia con los datos de tu publicación…</p>` + fixed;
+  if (locked) return intro + `<div class="notice notice-info">${I.lock}<div><b>Disponible en Plan Rinde</b>${lockMsg ? `<div class="small">${esc(lockMsg)}</div>` : ''} <a href="/suscribirme">Ver el Plan Rinde</a></div></div>` + fixed;
+  const err = st.error ? `<div class="notice notice-warn" style="margin-bottom:10px">${I.info}<div>${st.error === 'Disponible en Plan Rinde' ? `<b>Disponible en Plan Rinde.</b> <a href="/suscribirme">Ver el Plan Rinde</a>` : esc(st.error)}</div></div>` : '';
+  if (!data) return intro + err + `<button class="btn btn-primary" type="button" id="gen-go">${I.sparkle} Generar sugerencia</button>${usageLine}` + fixed;
+  const out = (key, label, t, extra = '') => `<div class="sg">
+    <div class="sg-head"><b>${label}</b><span class="tiny muted sg-count">${t.length} ${t.max ? `/ ${t.max} ` : ''}caracteres</span></div>
+    <textarea class="sg-text" id="sg-${key}" rows="${key === 'title' ? 2 : 14}" readonly>${esc(t.text)}</textarea>${extra}
+    <div class="help-links"><button class="btn btn-light btn-sm" type="button" data-copy="sg-${key}">${I.copy || '⧉'} Copiar</button><button class="btn btn-ghost btn-sm" type="button" data-again="1">${I.refresh} Generar otra</button></div></div>`;
+  const title = data.title
+    ? out('title', 'Título sugerido', data.title, `<div class="tiny muted">Máximo de su categoría en Mercado Libre: ${data.title.max} caracteres.</div>`)
+    : `<div class="sg"><b>Título</b><div class="notice notice-info" style="margin-top:6px">${I.info}<div>${esc(data.titleNote || data.titleRule?.message || '')}</div></div></div>`;
+  const desc = data.description ? out('desc', 'Descripción sugerida (texto plano)', data.description, '<div class="tiny muted">Sin HTML, links ni datos de contacto: Mercado Libre no los acepta.</div>') : '';
+  const attrs = data.attributes?.length
+    ? `<div class="sg"><b>Atributos que faltan según la categoría</b><ul class="sg-attrs">${data.attributes.map((a) => `<li><b>${esc(a.name)}</b>${a.required ? ' <span class="tag tag-bad" style="padding:0 6px">obligatorio</span>' : ''} — <span class="muted">${esc(a.hint)}</span></li>`).join('')}</ul><p class="tiny muted">Estos no los completa la IA: cargalos vos en Mercado Libre con el dato real.</p></div>`
+    : `<div class="sg"><b>Atributos</b><p class="small">No falta ninguno de los que pide la categoría.</p></div>`;
+  const notes = (data.notes || []).filter((n) => n !== NOTE_FIXED).map((n) => `<p class="small ${/corchetes/.test(n) ? 'sg-warn' : 'muted'}">${esc(n)}</p>`).join('');
+  return intro + err + title + desc + attrs + notes
+    + `<p class="tiny muted">${data.source === 'ia' ? 'Redactado con IA a partir de tus datos y revisado por Rinde (largo máximo, sin palabras ni números que no estén en tu publicación).' : DEMO ? 'Demo: armado con las reglas de Rinde, sin IA, con los datos de esta publicación de ejemplo.' : 'Armado con las reglas de Rinde, solo con tus datos (la IA no estaba disponible).'}${data.cached ? ' Guardada: no se volvió a generar.' : ''}</p>` + usageLine + fixed;
+}
+
+async function generateSuggestion(id, again = false) {
+  const r = S.model.rows.find((x) => x.it.id === id);
+  if (!r) return;
+  S.sugg[id] = { ...(S.sugg[id] || {}), loading: true, error: null };
+  S.blkOpen = { ...(S.blkOpen || {}), sugerencias: true };
+  render();
+  document.getElementById('blk-sugerencias')?.setAttribute('open', '');
+  if (DEMO) {
+    await new Promise((res) => setTimeout(res, 350));
+    const prev = S.sugg[id]?.data;
+    if (!again && prev) { S.sugg[id] = { data: prev, usage: demoUsage() }; return render(); }
+    if (S.demoSugg >= SUGGEST_LIMITS.PAID_PER_DAY) { S.sugg[id] = { error: `Llegaste al máximo de ${SUGGEST_LIMITS.PAID_PER_DAY} sugerencias por día.` }; return render(); }
+    const variant = again ? (S.sugg[id]?.variant || 0) + 1 : 0;
+    const src = sourceOf({ item: r.it, ...(S.demoData.sources?.[id] || {}) });
+    S.demoSugg++;
+    S.sugg[id] = { data: { ...ruleSuggestion(src, variant), cached: false }, variant, usage: demoUsage() };
+  } else {
+    try {
+      const d = await api('/api/item', { method: 'POST', body: { id, again }, timeout: 70000 });
+      S.sugg[id] = { data: d.suggestion, usage: d.usage };
+      if (S.item[id]) S.item[id] = { ...S.item[id], suggestion: d.suggestion, usage: d.usage };
+    } catch (e) {
+      S.sugg[id] = { ...(S.sugg[id] || {}), loading: false, error: e.message };
+    }
+  }
+  render();
+  document.getElementById('blk-sugerencias')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function copyText(el) {
+  try { await navigator.clipboard.writeText(el.value); }
+  catch { el.removeAttribute('readonly'); el.select(); document.execCommand('copy'); el.setAttribute('readonly', ''); }
+  toast('Copiado. Revisalo antes de pegarlo en Mercado Libre.');
+}
+
+function bindSearch() {
+  const inp = document.getElementById('qpub');
+  const list = document.getElementById('qpub-res');
+  if (!inp || !S.model) return;
+  const go = (id) => { location.hash = `#/publicacion/${id}`; };
+  const show = () => {
+    const res = searchItems(S.model.rows, inp.value);
+    list.hidden = !inp.value.trim();
+    inp.setAttribute('aria-expanded', String(!list.hidden));
+    list.innerHTML = res.length
+      ? res.map((r, i) => `<li role="option" id="qr-${i}" data-go="${esc(r.it.id)}">${scoreBadge(r.score)}<span><b>${esc(r.it.title)}</b><span class="tiny muted">${esc(r.it.id)} · ${fmtMoney(r.it.price)}</span></span></li>`).join('')
+      : `<li class="muted small" style="cursor:default">No hay publicaciones con "${esc(inp.value)}" en tu cuenta.</li>`;
+    list.querySelectorAll('[data-go]').forEach((li) => li.addEventListener('mousedown', (e) => { e.preventDefault(); go(li.dataset.go); }));
+  };
+  inp.addEventListener('input', show);
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { const first = searchItems(S.model.rows, inp.value)[0]; if (first) go(first.it.id); }
+    if (e.key === 'Escape') { inp.value = ''; list.hidden = true; }
+  });
+  inp.addEventListener('blur', () => setTimeout(() => { list.hidden = true; }, 150));
+}
+
+function bindDetail() {
+  const id = routeItemId();
+  document.querySelectorAll('details[data-blk]').forEach((d) => d.addEventListener('toggle', () => { S.blkOpen = { ...(S.blkOpen || {}), [d.dataset.blk]: d.open }; }));
+  document.getElementById('back')?.addEventListener('click', () => {
+    if (S.back) { history.back(); } else location.hash = '#/diagnostico';
+  });
+  document.getElementById('gen-go')?.addEventListener('click', () => generateSuggestion(id));
+  document.querySelectorAll('[data-again]').forEach((b) => b.addEventListener('click', () => generateSuggestion(id, true)));
+  document.querySelectorAll('[data-gen-here]').forEach((b) => b.addEventListener('click', () => {
+    const d = document.getElementById('blk-sugerencias'); d?.setAttribute('open', '');
+    if ((S.sugg[id]?.data || S.item[id]?.suggestion)) d?.scrollIntoView({ behavior: 'smooth', block: 'start' }); else generateSuggestion(id);
+  }));
+  document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', () => copyText(document.getElementById(b.dataset.copy))));
+  document.querySelector('.d-cost')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const v = f.querySelector('input').value;
+    const cur = S.model.rows.find((x) => x.it.id === id)?.cost || {};
+    if (await applyCosts([{ sku: f.dataset.sku, purchase: v, replacement: cur.replacement ?? '' }])) { toast('Costo guardado. Recalculamos.'); render(); }
+  });
+  if (routeParam('generar') === '1' && !S.sugg[id]) { history.replaceState(null, '', `#/publicacion/${id}`); generateSuggestion(id); }
 }
 
 // ─────────────────────────────── Rentabilidad ──────────────────────────────
@@ -590,7 +865,7 @@ function profitView() {
   <div class="table-wrap desktop-only"><table class="data">
     <thead><tr>${COLS.map(([k2, l]) => sortBtn(k2, l)).join('')}</tr></thead>
     <tbody>${rows.map((p) => `<tr${p.r.profit.shipEats ? ' class="row-bad"' : ''}>
-      <td class="prod"><b title="${esc(p.title)}">${esc(p.title)}</b><span class="tiny muted">${esc(costKey(p.r.it))}${p.r.profit.estimated ? ' · <span class="tag tag-neutral" style="padding:0 6px">estimado</span>' : ''}</span> ${warn(p)}</td>
+      <td class="prod"><b title="${esc(p.title)}">${itemLink(p.r.it.id, p.title)}</b><span class="tiny muted">${esc(costKey(p.r.it))}${p.r.profit.estimated ? ' · <span class="tag tag-neutral" style="padding:0 6px">estimado</span>' : ''}</span> ${warn(p)}</td>
       <td class="num">${p.units || '<span class="muted">0</span>'}</td>
       <td class="num">${p.units ? money(p.revenue) : '—'}</td>
       <td class="num">${p.units ? money(p.fees) : '—'}</td>
@@ -604,7 +879,7 @@ function profitView() {
   </table></div>
 
   <div class="pcards mobile-only">${rows.map((p) => `<div class="pc">
-    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><b style="line-height:1.3">${esc(p.title)}</b>${p.r.profit.hasCost && p.units ? (p.net < 0 ? `<span class="tag tag-bad">${I.down} Pierde</span>` : `<span class="tag tag-ok">${I.up} Gana</span>`) : `<span class="tag tag-neutral">${p.r.profit.hasCost ? 'Sin ventas' : 'Costo sin cargar'}</span>`}</div>
+    <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><b style="line-height:1.3">${itemLink(p.r.it.id, p.title)}</b>${p.r.profit.hasCost && p.units ? (p.net < 0 ? `<span class="tag tag-bad">${I.down} Pierde</span>` : `<span class="tag tag-ok">${I.up} Gana</span>`) : `<span class="tag tag-neutral">${p.r.profit.hasCost ? 'Sin ventas' : 'Costo sin cargar'}</span>`}</div>
     ${p.r.warning ? `<div class="notice notice-bad small" style="margin:8px 0;padding:8px 10px">${I.alert}<div>${esc(p.r.warning)}</div></div>` : ''}
     ${p.r.profit.shipEats ? `<div class="notice notice-bad small" style="margin:8px 0;padding:8px 10px">${I.alert}<div><b>El envío gratis te come esta venta:</b> envío ${fmtMoney(p.r.profit.fees.shipping)} + cargo fijo ${fmtMoney(p.r.profit.fixedFee)} = ${fmtPct(p.r.profit.shipFixedShare)} del precio.</div></div>` : ''}
     <div class="row"><span>Ventas 30 d</span><b>${p.units} u · ${p.units ? fmtMoney(p.revenue) : '—'}</b></div>
@@ -628,7 +903,7 @@ function alertsView() {
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));align-items:start">
     <section class="card">
       <h3>${I.bell} Alertas activas (${alerts.length})</h3>
-      <div class="grid" style="gap:8px">${alerts.map((a) => `<div class="notice ${a.severity === 'bad' ? 'notice-bad' : 'notice-warn'}" style="padding:10px 12px">${a.severity === 'bad' ? I.alert : I.info}<div>${(S.seenUnread || []).includes(a.key) ? '<span class="tag tag-accent">Nueva</span> ' : ''}<span class="tag ${a.severity === 'bad' ? 'tag-bad' : 'tag-warn'}">${a.severity === 'bad' ? 'Urgente' : 'Atención'} · ${esc(ALERT_LABELS[a.kind] || a.kind)}</span>${a.title ? `<div style="font-weight:600;margin-top:4px">${esc(a.title)}</div>` : ''}<div class="small">${esc(a.message)}</div></div></div>`).join('') || `<div class="notice notice-ok">${I.checkCircle}<div>No hay alertas. Todo en orden.</div></div>`}</div>
+      <div class="grid" style="gap:8px">${alerts.map((a) => `<div class="notice ${a.severity === 'bad' ? 'notice-bad' : 'notice-warn'}" style="padding:10px 12px">${a.severity === 'bad' ? I.alert : I.info}<div>${(S.seenUnread || []).includes(a.key) ? '<span class="tag tag-accent">Nueva</span> ' : ''}<span class="tag ${a.severity === 'bad' ? 'tag-bad' : 'tag-warn'}">${a.severity === 'bad' ? 'Urgente' : 'Atención'} · ${esc(ALERT_LABELS[a.kind] || a.kind)}</span>${a.title ? `<div style="font-weight:600;margin-top:4px">${itemLink(a.item_id, a.title)}</div>` : ''}<div class="small">${esc(a.message)}</div></div></div>`).join('') || `<div class="notice notice-ok">${I.checkCircle}<div>No hay alertas. Todo en orden.</div></div>`}</div>
     </section>
     ${EMAIL_ENABLED ? `    <section class="card">
       <h3>${I.mail} Configuración de email</h3>
@@ -778,6 +1053,8 @@ async function runConnecting(force = false) {
 
 // ─────────────────────────────── Eventos ───────────────────────────────────
 function bind(route) {
+  if (route === 'publicacion') bindDetail();
+  document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); location.hash = `#/publicacion/${b.dataset.gen}?generar=1`; }));
   document.querySelectorAll('[data-filter]').forEach((b) => b.addEventListener('click', () => {
     S.filter = b.dataset.filter;
     render();
@@ -1056,5 +1333,13 @@ async function refreshPlan(force = false) {
   } catch { /* sin conexión: se reintenta en el próximo cambio */ }
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshPlan(); });
-window.addEventListener('hashchange', () => { if (S.model && currentRoute() !== 'conectando') { render(); refreshPlan(); } });
+// Antes de cambiar de pantalla se guarda el scroll; al abrir un detalle se recuerda de dónde se vino (para "Volver").
+let lastHash = location.hash;
+window.addEventListener('scroll', () => { if (S.model) S.scroll[location.hash] = window.scrollY; }, { passive: true });
+window.addEventListener('hashchange', () => {
+  const was = lastHash; lastHash = location.hash;
+  if (currentRoute() === 'publicacion') { if (!/^#\/publicacion\//.test(was || '')) S.back = was || '#/diagnostico'; delete S.scroll[location.hash]; S.blkOpen = {}; }
+  else S.back = null;
+  if (S.model && currentRoute() !== 'conectando') { render(); refreshPlan(); }
+});
 boot();

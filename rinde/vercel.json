@@ -1,18 +1,15 @@
 {
+  "buildCommand": "node api/_lib/check-routes.mjs",
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
     {
+      "source": "/api/item",
+      "destination": "/api/profit?scope=item"
+    },
+    {
       "source": "/demo",
-      "destination": "/app.html"
-    },
-    {
-      "source": "/app",
-      "destination": "/app.html"
-    },
-    {
-      "source": "/admin",
-      "destination": "/admin.html"
+      "destination": "/app"
     },
     {
       "source": "/api/auth/:action",
@@ -33,6 +30,9 @@
       "maxDuration": 60
     },
     "api/campaigns.js": {
+      "maxDuration": 60
+    },
+    "api/profit.js": {
       "maxDuration": 60
     }
   },

@@ -1,6 +1,8 @@
 // /api/admin — usuarios, activar/desactivar plan y Validación contra Mercado Libre real.
 // Protegido con ADMIN_KEY (header x-admin-key).
 import { handler, json, readBody, query, AppError, requireEnv } from './_lib/http.js';
+import { ROUTES } from '../shared/routes.js';
+import { startOfDayAR } from './_lib/item.js';
 import { safeEqual } from './_lib/crypto.js';
 import { db } from './_lib/db.js';
 import { getAccessToken, meliRaw, getBillingBatchRaw, getSettlementRaw, pool } from './_lib/meli.js';
@@ -194,11 +196,33 @@ export default handler(async (req, res) => {
       db.select('rinde_connections', {}, { columns: 'user_id,updated_at' }),
     ]);
     const connected = new Set(conns.map((c) => c.user_id));
-    return json(res, 200, { users: users.map((u) => ({ ...u, connected: connected.has(u.id) })) });
+    // Sugerencias generadas por cuenta (total y hoy, hora AR). Si la tabla todavía no existe, no rompe la lista.
+    const sugg = {};
+    try {
+      const dayAR = startOfDayAR();
+      for (const r of await db.select('rinde_suggestions', {}, { columns: 'user_id,created_at', order: 'created_at.desc', limit: 20000 })) {
+        const x = (sugg[r.user_id] ||= { total: 0, today: 0 });
+        x.total++;
+        if (new Date(r.created_at).getTime() >= dayAR) x.today++;
+      }
+    } catch (e) { console.error('[rinde][admin][sugerencias]', e.message); }
+    return json(res, 200, { users: users.map((u) => ({ ...u, connected: connected.has(u.id), suggestions: sugg[u.id] || { total: 0, today: 0 } })) });
   }
 
   if (req.method === 'POST') {
     const body = await readBody(req);
+    if (body.action === 'check_routes') {
+      // Pide cada ruta pública al dominio en producción (o al de este deploy) y exige 200.
+      const base = (process.env.RINDE_APP_URL || appUrl(req)).replace(/\/$/, '');
+      const rows = await Promise.all(ROUTES.map(async (p) => {
+        const t0 = Date.now();
+        try {
+          const r = await fetch(base + p, { redirect: 'manual', headers: { 'User-Agent': 'Rinde-admin-check' } });
+          return { path: p, status: r.status, ok: r.status === 200, ms: Date.now() - t0, error: r.headers.get('x-vercel-error') || null };
+        } catch (e) { return { path: p, status: 0, ok: false, ms: Date.now() - t0, error: e.message }; }
+      }));
+      return json(res, 200, { base, rows, ok: rows.every((r) => r.ok), at: new Date().toISOString() });
+    }
     if (body.action === 'billing_config') {
       const c = mergeBilling(body.config);
       const n = (v) => Math.round(Number(String(v).replace(/[^0-9.]/g, '')));

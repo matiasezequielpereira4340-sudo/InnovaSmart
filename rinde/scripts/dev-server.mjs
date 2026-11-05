@@ -43,7 +43,13 @@ function addVercelHelpers(res) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const dest = new URL(rewrite(url.pathname), url);
+  // Igual que Vercel: con cleanUrls, un rewrite (o un pedido) a .html no se sirve.
+  const rewritten = rewrite(url.pathname);
+  if (cfg.cleanUrls && /\.html$/.test(rewritten) && !url.pathname.startsWith('/api/')) {
+    res.statusCode = 404; res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.end('NOT_FOUND (como Vercel: con cleanUrls el destino no puede terminar en .html)');
+  }
+  const dest = new URL(rewritten, url);
   const query = Object.fromEntries([...url.searchParams, ...dest.searchParams]);
   const p = dest.pathname;
   try {

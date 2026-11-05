@@ -5,6 +5,7 @@ import { handler, json, readBody, query, AppError } from './_lib/http.js';
 import { currentUser, requirePaid } from './_lib/users.js';
 import { db } from './_lib/db.js';
 import { costKey } from '../shared/model.js';
+import { itemRoute } from './_lib/item.js';
 
 const num = (v) => {
   if (v === '' || v == null) return null;
@@ -14,6 +15,7 @@ const num = (v) => {
 
 export default handler(async (req, res) => {
   const u = await currentUser(req);
+  if (query(req).scope === 'item') return itemRoute(req, res, u);
 
   if (req.method === 'GET') {
     const { format } = query(req);

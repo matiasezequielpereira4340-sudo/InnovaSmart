@@ -472,6 +472,8 @@ export function normalizeItem(b) {
     },
     catalog_product_id: b.catalog_product_id || null,
     catalog_listing: !!b.catalog_listing,
+    // Ventas de toda la vida de la publicación: con ventas, Mercado Libre no deja cambiar el título.
+    sold_quantity: b.sold_quantity ?? null,
     category_id: b.category_id,
     pictures_count: (b.pictures || []).length,
     thumbnail: b.thumbnail ? b.thumbnail.replace(/^http:/, 'https:') : null,
@@ -481,5 +483,26 @@ export function normalizeItem(b) {
       : null,
     video: 'video_id' in b ? !!b.video_id : null,
     permalink: b.permalink,
+  };
+}
+
+/**
+ * Datos para una sugerencia de título/descripción (solo lectura): la publicación con sus atributos,
+ * la descripción, las preguntas ya respondidas y la categoría (nombre y máximo de caracteres del título).
+ */
+export async function getSuggestionSource(t, itemId) {
+  const [b] = await getItems(t, [itemId]);
+  if (!b) return null;
+  const d = await meliGet(t, `/items/${itemId}/description`, { allow404: true }).catch(() => null);
+  const q = await meliGet(t, `/questions/search?item=${itemId}&status=ANSWERED&api_version=4&limit=20&sort_fields=date_created&sort_types=DESC`, { allow404: true }).catch(() => null);
+  const cat = b.category_id ? await meliGet(t, `/categories/${b.category_id}`, { allow404: true }).catch(() => null) : null;
+  const val = (a) => a.value_name || (Array.isArray(a.values) ? a.values.map((v) => v.name).filter(Boolean).join(', ') : '');
+  const attributes = (b.attributes || []).map((a) => ({ id: a.id, name: a.name, value: val(a) })).filter((a) => a.value);
+  return {
+    item: { ...normalizeItem(b) },
+    attributes,
+    description: d ? String(d.plain_text || d.text || '') : '',
+    questions: (q?.questions || []).filter((x) => x.answer?.text).map((x) => ({ q: x.text, a: x.answer.text })),
+    category: cat ? { name: cat.name || null, max_title: Number(cat.settings?.max_title_length) || null } : null,
   };
 }
