@@ -1001,7 +1001,7 @@ function profitView() {
   <div class="kpis">
     <div class="kpi"><div class="k-label">Facturación</div><div class="k-value num">${fmtMoney(k.revenue)}</div><div class="k-sub">${k.units} unidades</div></div>
     <div class="kpi ${k.net == null ? '' : k.net < 0 ? 'is-bad' : 'is-ok'}"><div class="k-label">Ganancia neta</div><div class="k-value num">${k.net == null ? 'cargá costos' : fmtMoney(k.net)}</div><div class="k-sub">sobre ${fmtPct(k.revenueCoverage)} de la facturación con costo</div></div>
-    <div class="kpi ${k.margin != null && k.margin < THRESHOLDS.MARGIN_HEALTHY_MIN ? 'is-bad' : ''}"><div class="k-label">Margen promedio</div><div class="k-value num">${fmtPct(k.margin)}</div><div class="k-sub">después de todo</div></div>
+    <div class="kpi ${k.margin != null && k.margin < THRESHOLDS.MARGIN_HEALTHY_MIN ? 'is-bad' : ''}"><div class="k-label">Margen promedio</div><div class="k-value num">${k.margin == null ? 'cargá costos' : fmtPct(k.margin)}</div><div class="k-sub">${k.margin == null ? 'sin costos no se puede calcular' : 'después de todo'}</div></div>
     ${S.model.hasAnyCost === false
       ? `<div class="kpi"><div class="k-label">Pierden plata</div><div class="k-value" style="font-size:1rem">Cargá tus costos para calcularlo</div><div class="k-sub">sin costos no sabemos si perdés</div></div>`
       : `<div class="kpi ${k.losing ? 'is-bad' : 'is-ok'}"><div class="k-label">Pierden plata</div><div class="k-value num">${k.losing}</div><div class="k-sub">productos con margen negativo</div></div>`}
