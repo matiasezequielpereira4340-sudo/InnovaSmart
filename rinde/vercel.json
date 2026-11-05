@@ -1,5 +1,6 @@
 {
   "buildCommand": "node api/_lib/check-routes.mjs",
+  "outputDirectory": ".",
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
