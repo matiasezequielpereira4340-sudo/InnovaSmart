@@ -248,9 +248,9 @@ export function buildRuleSummary(model) {
       fix: 'Decidí cuáles mejorar a fondo y cuáles cerrar: ocupan stock y atención.',
       top: itemsLine(model.abandoned.top, model.abandoned.more),
     } : null,
-    tips: (model.tips || []).map((t) => ({ label: 'Sugerencia', detail: t.code === 'publicacion_clasica'
-      ? `${t.count} publicación(es) son Clásicas: en Premium se ofrecen cuotas sin interés. Es una sugerencia, no la contamos como plata perdida.`
-      : 'Si en algún momento querés acelerar entregas, Flex o Full ayudan a posicionar. No lo contamos como plata perdida.', small: true })),
+    // Full/Flex ya no va como consejo suelto: lo explica (por publicación) la sección "Full y Flex" del diagnóstico.
+    tips: (model.tips || []).filter((t) => t.code === 'publicacion_clasica').map((t) => ({ label: 'Sugerencia',
+      detail: `${t.count} publicación(es) son Clásicas: en Premium se ofrecen cuotas sin interés. Es una sugerencia, no la contamos como plata perdida.`, small: true })),
     shipNote: model.shipCounts && (model.shipCounts.full || model.shipCounts.flex)
       ? [model.shipCounts.full ? `${model.shipCounts.full} publicación(es) listas para Full` : '', model.shipCounts.flex ? `${model.shipCounts.flex} para sumar Flex` : ''].filter(Boolean).join(' y ') + ': venden sostenido todas las semanas. Lo ves en el plan de cada una (no suma al estimado).'
       : null,

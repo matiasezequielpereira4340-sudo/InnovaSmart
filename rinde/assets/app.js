@@ -3,7 +3,7 @@ import { I, hydrateIcons } from './icons.js';
 import { CATEGORIES, GROUPS, THRESHOLDS, waLink, PLAN_PRICE_ARS, EMAIL_ENABLED, COPY } from '../shared/config.js';
 import { fmtMoney, fmtPct, conversion, LISTING_LABEL, ALERT_LABELS, competitorRef, priceGap, groupLabel, opState } from '../shared/rules.js';
 import { evaluateAll, summarize, actionsByItem, splitIdle, campaignStateText, feeKey, feeFromHistory } from '../shared/campaigns.js';
-import { simSources, scenarios, simulate, trialBudget, SIM_NOTE } from '../shared/simulator.js';
+import { simSources, scenarios, simulate, trialBudget, SIM_NOTE, adReadiness, fmtSales } from '../shared/simulator.js';
 import { accountConversion } from '../shared/score.js';
 import { regenState, planChanged } from '../shared/plans.js';
 import { scoreAllows, conflictOf } from '../shared/plan-guard.js';
@@ -75,11 +75,13 @@ function catTag(key, it = null) {
 }
 /** Debajo de la tarjeta de un grupo: cuántas están además sin stock o pausadas. */
 function tileStates(key) {
-  // "Sin stock 0" no puede contradecir a Alertas: si hay abandonadas o de temporada sin stock/pausadas, se dice acá.
+  // "Sin stock 0" no puede contradecir a Alertas: se suman entre paréntesis las abandonadas (y de temporada) en ese estado.
   const OTHER = { SIN_STOCK: 'sin stock', PAUSADAS: 'pausada' };
   if (OTHER[key]) {
-    const k = S.model.rows.filter((r) => ['ABANDONADAS', 'TEMPORADA'].includes(r.group) && opState(r.it) === OTHER[key]).length;
-    return k ? `<span class="tile-sub">y ${k} abandonada${k === 1 ? '' : 's'} o de temporada ${OTHER[key] === 'pausada' ? (k === 1 ? 'pausada' : 'pausadas') : 'sin stock'}</span>` : '';
+    const n = (g) => S.model.rows.filter((r) => r.group === g && opState(r.it) === OTHER[key]).length;
+    const a = n('ABANDONADAS'), t = n('TEMPORADA');
+    const parts = [a && `+${a} abandonada${a === 1 ? '' : 's'}`, t && `+${t} de temporada`].filter(Boolean);
+    return parts.length ? `<span class="tile-sub">(${parts.join(', ')})</span>` : '';
   }
   if (!['ABANDONADAS', 'TEMPORADA'].includes(key)) return '';
   const n = {};
@@ -852,18 +854,38 @@ function simulatorCard(id, { pick = false } = {}) {
   if (!id) id = S.simPick || items[0]?.it.id;
   if (!id) return `<section class="card sim" id="simwrap"><h3 style="margin-top:0">${I.chart} Simulador de campaña</h3><p class="small">No tenés publicaciones activas para simular.</p></section>`;
   const f = (S.simForm ||= {})[id] ||= { budget: '', days: 7, cpc: '', conv: '' };
-  return `<section class="card sim" id="simwrap" data-sim="${esc(id)}">
-    <h3 style="margin-top:0">${I.chart} Simulador de campaña</h3>
-    <p class="small muted" style="margin-top:0">Elegí cuánto querés gastar por día y cuántos días. Rinde hace la cuenta con tus cargos reales de Mercado Libre. No activa nada.</p>
-    <div class="sim-form">
-      ${pick ? `<div class="field sim-pick"><label for="sim-item">Publicación</label><select id="sim-item">${items.map((r) => `<option value="${esc(r.it.id)}" ${r.it.id === id ? 'selected' : ''}>${esc(r.it.title.slice(0, 70))} · ${fmtMoney(r.it.price)}</option>`).join('')}</select></div>` : ''}
+  const row = S.model.rows.find((x) => x.it.id === id);
+  const ready = row ? adReadiness(row) : null;
+  const notaBox = (x) => `<div class="notice notice-warn sim-first">${I.info}<div><b>${esc(x.text)}:</b> ${esc(x.reasons.join(', '))}.${x.improvements.length ? `<ol class="sim-fixes">${x.improvements.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>` : ''}<a href="#/publicacion/${esc(id)}" class="small">Ver todas las mejoras de la publicación</a></div></div>`;
+  const picker = pick ? `<div class="field sim-pick"><label for="sim-item">Publicación</label><select id="sim-item">${items.map((r) => `<option value="${esc(r.it.id)}" ${r.it.id === id ? 'selected' : ''}>${esc(r.it.title.slice(0, 70))} · ${fmtMoney(r.it.price)}</option>`).join('')}</select></div>` : '';
+  // MeLi no publicita pausadas ni sin stock: ahí no se simula gasto.
+  if (ready?.block) {
+    return `<section class="card sim" id="simwrap" data-sim="${esc(id)}" data-block="1">
+      <h3 style="margin-top:0">${I.chart} Simulador de campaña</h3>${pick ? `<div class="sim-form">${picker}</div>` : ''}
+      <div class="notice notice-bad">${I.alert}<div><b>${esc(ready.text)}</b> Mercado Libre no muestra publicidad de publicaciones pausadas ni sin stock, así que no simulamos gasto.</div></div>
+      ${ready.then ? notaBox({ ...ready.then, text: 'Y cuando la reactives, antes de pagar publicidad subí la nota' }) : ''}
+    </section>`;
+  }
+  const formAndResults = `<div class="sim-form">
       <div class="field"><label for="sim-budget">Presupuesto por día</label><input id="sim-budget" inputmode="decimal" placeholder="$" value="${esc(f.budget)}"></div>
       <div class="field"><label for="sim-days">Días</label><input id="sim-days" inputmode="numeric" value="${esc(f.days)}"></div>
       <div class="field"><label for="sim-cpc">Costo por clic <span class="muted">(opcional)</span></label><input id="sim-cpc" inputmode="decimal" placeholder="lo calculamos" value="${esc(f.cpc)}"></div>
       <div class="field"><label for="sim-conv">Conversión % <span class="muted">(opcional)</span></label><input id="sim-conv" inputmode="decimal" placeholder="la calculamos" value="${esc(f.conv)}"></div>
     </div>
     <div id="sim-res" aria-live="polite">${simResults(id)}</div>
-    <p class="d-fixed small">${I.info} ${esc(SIM_NOTE)}</p>
+    <p class="d-fixed small">${I.info} ${esc(SIM_NOTE)}</p>`;
+  if (ready?.first) {
+    return `<section class="card sim" id="simwrap" data-sim="${esc(id)}">
+      <h3 style="margin-top:0">${I.chart} Simulador de campaña</h3>${pick ? `<div class="sim-form">${picker}</div>` : ''}
+      ${notaBox(ready)}
+      <details class="sim-anyway" ${S.simOpen?.[id] ? 'open' : ''}><summary class="small"><b>Si igual querés probar</b>, abrí el simulador</summary>${formAndResults}</details>
+    </section>`;
+  }
+  return `<section class="card sim" id="simwrap" data-sim="${esc(id)}">
+    <h3 style="margin-top:0">${I.chart} Simulador de campaña</h3>
+    <p class="small muted" style="margin-top:0">Elegí cuánto querés gastar por día y cuántos días. Rinde hace la cuenta con tus cargos reales de Mercado Libre. No activa nada.</p>
+    ${pick ? `<div class="sim-form">${picker}</div>` : ''}
+    ${formAndResults}
   </section>`;
 }
 
@@ -885,7 +907,6 @@ function simResults(id) {
     feeAt: (p) => [DEMO ? ctxData.fees.demo : ctxData.fees?.[feeKey(ctxData.listing_type, ctxData.category_id, p)], feeFromHistory(ctxData.feeHistory, p)].filter(Boolean) };
   const runs = sc.list.map((x) => ({ x, s: simulate({ price: ctxData.price, budget, days, cpc: x.cpc, conv: x.conv, ctx, cost }) }));
   const m = (v) => fmtMoney(v);
-  const n1 = (v) => (Math.round(v * 10) / 10).toLocaleString('es-AR');
   const srcLine = (label, s, fmtV) => (s ? `<li><b>${label}:</b> ${fmtV(s.value)} · sale ${s.source.startsWith('el ') ? 'del ' + esc(s.source.slice(3)) : 'de ' + esc(s.source)} (${esc(s.detail)}).</li>` : '');
   const sources = `<ul class="small sim-src">${srcLine('Costo por clic', sc.cpc, (v) => m(v))}${srcLine('Conversión', sc.conv, (v) => fmtPct(v))}${sc.explain.map((t) => `<li>${esc(t)}</li>`).join('')}
     <li><b>Presupuesto:</b> ${m(budget)} por día × ${days} día${days === 1 ? '' : 's'}${f.budget ? '' : ' (sugerido: junta ~100 clics para medir)'}. Suponemos que Mercado Libre gasta todo el presupuesto.</li></ul>`;
@@ -896,7 +917,7 @@ function simResults(id) {
   const ROWS = [
     ['Gasto en publicidad', (s) => m(s.spend)],
     ['Visitas estimadas (clics)', (s) => Math.round(s.visits).toLocaleString('es-AR')],
-    ['Ventas', (s) => n1(s.sales)],
+    ['Ventas', (s) => fmtSales(s.sales)],
     ['Facturación', (s) => m(s.revenue)],
     ['Cargos de Mercado Libre', (s) => '−' + m(s.charges)],
     ['ACOS', (s) => (s.acos == null ? 'sin ventas' : fmtPct(s.acos)), (s) => (s.acosOverMargin ? 'neg' : '')],
@@ -943,6 +964,7 @@ function bindSim() {
   set('days', document.getElementById('sim-days'));
   set('cpc', document.getElementById('sim-cpc'));
   set('conv', document.getElementById('sim-conv'));
+  document.querySelector('.sim-anyway')?.addEventListener('toggle', (e) => { (S.simOpen ||= {})[id] = e.target.open; });
   document.getElementById('sim-item')?.addEventListener('change', (e) => { S.simPick = e.target.value; render(); document.getElementById('simwrap')?.scrollIntoView({ block: 'start' }); });
   bindSimCost();
 }

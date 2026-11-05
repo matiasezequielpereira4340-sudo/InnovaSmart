@@ -49,6 +49,18 @@ const numSrc = prof.slice(prof.indexOf('const num ='), prof.indexOf('};', prof.i
 const num = new Function(`${numSrc}; return num;`)();
 ok(num(1234.5) === 1234.5 && num('1.234,50') === 1234.5 && num('9800') === 9800, 'Costo 1234.5 se guarda como 1234.5 (antes quedaba 12345)');
 
+// ── Diagnóstico: sin el consejo viejo de Full/Flex (lo explica la sección Full y Flex) ──
+const { buildRuleSummary } = await import('../shared/model.js');
+const sum = buildRuleSummary(buildModel(D));
+ok(!(sum.tips || []).some((t) => /Flex|Full/.test(t.detail)), 'Resumen sin "Si en algún momento querés acelerar entregas, Flex o Full…"');
+const allSrc = ['../shared/model.js', '../assets/app.js', '../api/diagnosis.js'].map((f) => fs.readFileSync(new URL(f, import.meta.url), 'utf8')).join('\n');
+ok(!/acelerar entregas/.test(allSrc), 'Ese texto ya no está en ningún lado');
+
+// ── Tarjetas: "(+1 abandonada)" ──
+const tileSrc = fs.readFileSync(new URL('../assets/app.js', import.meta.url), 'utf8');
+const tileFn = tileSrc.slice(tileSrc.indexOf('function tileStates'), tileSrc.indexOf('function', tileSrc.indexOf('function tileStates') + 10));
+ok(/`\+\$\{a\} abandonada/.test(tileFn) && !/abandonadas? o de temporada/.test(tileFn), 'Tarjetas Sin stock / Pausadas: "(+1 abandonada)"');
+
 // ── Textos ──
 const app = fs.readFileSync(new URL('../assets/app.js', import.meta.url), 'utf8');
 ok(app.includes("'Tus publicaciones de peor a mejor'"), 'Menos de 10: "Tus publicaciones de peor a mejor"');

@@ -99,3 +99,38 @@ export function trialBudget(cpcMedio, days = 7) {
 }
 
 export const fmtSim = { money: fmt, pct: pctTxt };
+
+/** Ventas sin decimales: "menos de 1", "1", "unas 4". */
+export function fmtSales(n) {
+  if (!(n >= 1)) return n > 0 ? 'menos de 1' : '0';
+  const r = Math.round(n);
+  return Math.abs(n - r) < 0.05 ? String(r) : `unas ${r}`;
+}
+
+export const NOTA_MIN_ADS = 75; // por debajo, primero se arregla la publicación
+/**
+ * ¿Tiene sentido pagar publicidad hoy? MeLi no publicita publicaciones pausadas ni sin stock: ahí no se simula.
+ * Con nota menor a 75, 0 visitas en 30 días o abandonada: primero subir la nota (el simulador queda plegado).
+ * @param r fila del modelo ({ it, score, group })
+ * @returns { block: true, text } | { first: true, text, reasons, improvements } | null
+ */
+export function adReadiness(r) {
+  const it = r.it;
+  const noStock = (it.available_quantity ?? 1) <= 0 || (it.sub_status || []).includes('out_of_stock');
+  const paused = it.status === 'paused';
+  const review = it.status === 'under_review';
+  const improvements = (r.score?.improvements || []).slice(0, 3).map((x) => x.text);
+  const reasons = [];
+  if (r.score?.score != null && r.score.score < NOTA_MIN_ADS) reasons.push(`la nota es ${r.score.score}/100`);
+  if (it.visits30 === 0) reasons.push('tuvo 0 visitas en 30 días');
+  if (r.group === 'ABANDONADAS') reasons.push('no vendió nada en 6 meses');
+  const first = reasons.length ? { reasons, improvements, text: 'Antes de pagar publicidad, subí la nota' } : null;
+  if (noStock || paused || review) {
+    const text = review ? 'Está en revisión de Mercado Libre: resolvelo antes de hacer publicidad.'
+      : paused && noStock ? 'Está pausada y sin stock: reponé y reactivala antes de hacer publicidad.'
+      : paused ? 'Está pausada: reactivala antes de hacer publicidad.'
+      : 'Está sin stock: reponé y reactivala antes de hacer publicidad.';
+    return { block: true, text, then: first };
+  }
+  return first ? { first: true, ...first } : null;
+}

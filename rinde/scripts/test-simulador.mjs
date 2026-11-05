@@ -1,6 +1,6 @@
 // Pruebas: simulador de campaña. Uso: node scripts/test-simulador.mjs
 // Casos: con historial, sin historial (3 escenarios), sin costo (sin veredicto), ACOS mayor al margen.
-import { simSources, scenarios, simulate, trialBudget, ASSUMED_CPC, SIM_NOTE } from '../shared/simulator.js';
+import { simSources, scenarios, simulate, trialBudget, ASSUMED_CPC, SIM_NOTE, adReadiness, fmtSales } from '../shared/simulator.js';
 import fs from 'node:fs';
 
 let fails = 0;
@@ -55,6 +55,25 @@ ok(loss.verdict === 'pierde_sin_ads' && loss.targetAcos === null, 'Si ya pierde 
 // 5) Sin cargos de MeLi para ese precio: no se simula el resultado
 const nf = simulate({ price, budget: 1000, days: 7, cpc: 100, conv: 0.01, ctx: { feeAt: () => null }, cost: 9800 });
 ok(nf.noFees && nf.verdict === undefined, 'Sin cargos de MeLi para el precio: no se simula el resultado');
+
+// 6) ¿Conviene publicitar? Pausada o sin stock: no se simula gasto. Nota baja / 0 visitas / abandonada: primero la nota.
+const imp = [{ text: 'Te falta 1 atributo: Modelo del soporte.' }, { text: 'Tenés 5 fotos, sumá 1 más.' }, { text: 'Sumá un video.' }, { text: 'Cuarta mejora.' }];
+// Como el Soporte de MATYPERE: pausado, nota 70, 0 visitas, abandonado.
+const soporte = adReadiness({ it: { id: 'MLA2705340112', status: 'paused', available_quantity: 3, visits30: 0 }, score: { score: 70, improvements: imp }, group: 'ABANDONADAS' });
+ok(soporte.block && soporte.text === 'Está pausada: reactivala antes de hacer publicidad.', `Pausada: "${soporte.text}" (sin simular gasto)`);
+ok(soporte.then && soporte.then.improvements.length === 3, 'Pausada con nota baja: igual dice qué mejorar después de reactivarla (3 mejoras)');
+const sinStock = adReadiness({ it: { status: 'active', available_quantity: 0, visits30: 40 }, score: { score: 90, improvements: [] }, group: 'SIN_STOCK' });
+ok(sinStock.block && /sin stock/.test(sinStock.text) && !sinStock.then, `Sin stock: "${sinStock.text}"`);
+const pausadaSinStock = adReadiness({ it: { status: 'paused', available_quantity: 0, sub_status: ['out_of_stock'] }, score: { score: 90, improvements: [] }, group: 'SIN_STOCK' });
+ok(pausadaSinStock.block && /pausada y sin stock/.test(pausadaSinStock.text), 'Pausada por falta de stock: lo dice');
+const notaBaja = adReadiness({ it: { status: 'active', available_quantity: 5, visits30: 120 }, score: { score: 60, improvements: imp }, group: 'POCA_VISIBILIDAD' });
+ok(notaBaja.first && notaBaja.text === 'Antes de pagar publicidad, subí la nota' && notaBaja.improvements.length === 3 && /60\/100/.test(notaBaja.reasons[0]), 'Nota menor a 75: primero las 3 mejoras principales');
+ok(adReadiness({ it: { status: 'active', available_quantity: 5, visits30: 0 }, score: { score: 90, improvements: [] }, group: 'SIN_VENTAS' })?.first, '0 visitas en 30 días: primero la nota');
+ok(adReadiness({ it: { status: 'active', available_quantity: 5, visits30: 50 }, score: { score: 90, improvements: [] }, group: 'ABANDONADAS' })?.first, 'Abandonada: primero la nota');
+ok(adReadiness({ it: { status: 'active', available_quantity: 5, visits30: 50 }, score: { score: 75, improvements: [] }, group: 'SANA' }) === null, 'Activa, nota 75 o más, con visitas: simulador directo');
+
+// 7) Ventas sin decimales
+ok(fmtSales(0.3) === 'menos de 1' && fmtSales(1) === '1' && fmtSales(1.02) === '1' && fmtSales(3.9) === 'unas 4' && fmtSales(2) === '2' && fmtSales(0) === '0', 'Ventas: "menos de 1", "1", "unas 4" (nunca 0,3 ni 3,9)');
 
 // Textos
 const app = fs.readFileSync(new URL('../assets/app.js', import.meta.url), 'utf8');

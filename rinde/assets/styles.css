@@ -576,3 +576,6 @@ a.ilink:hover { color: var(--accent); text-decoration-color: var(--accent); }
 .sim-acos { margin-top: 10px; }
 .sim-try { margin: 10px 0 0; padding: 10px 12px; background: var(--mark); color: var(--mark-ink); border-radius: var(--radius-sm); font-size: .92rem; }
 .sim-cost { margin-top: 8px; }
+.sim-first { margin-bottom: 10px; }
+.sim-fixes { margin: 6px 0; padding-left: 18px; }
+.sim-anyway > summary { cursor: pointer; padding: 8px 0; color: var(--accent); }
