@@ -10,6 +10,11 @@ import { sha256 } from './crypto.js';
 import * as meli from './meli.js';
 import { NOT_SOLD } from './sync.js';
 import { generateSuggestion } from './ai.js';
+import { loadAccount } from './sync.js';
+import { readFees } from './campaigns-meli.js';
+import { feeKey } from '../../shared/campaigns.js';
+import { costKey } from '../../shared/model.js';
+import { accountConversion } from '../../shared/score.js';
 import { sourceOf, titleRule, finalize, ruleSuggestion, SUGGEST_LIMITS } from '../../shared/suggest.js';
 
 const DAY = 86400000;
@@ -57,6 +62,12 @@ async function salesOf(userId, itemId) {
 export async function itemRoute(req, res, u) {
   const paid = isPaid(u);
 
+  if (req.method === 'GET' && query(req).sim) {
+    const id = String(query(req).id || '').toUpperCase();
+    if (!ID.test(id)) throw new AppError(400, 'Número de publicación inválido.', 'bad_id');
+    if (!paid) throw new AppError(402, 'Disponible en Plan Rinde', 'plan_required');
+    return json(res, 200, await simContext(u, id));
+  }
   if (req.method === 'GET') {
     const id = String(query(req).id || '').toUpperCase();
     if (!ID.test(id)) throw new AppError(400, 'Número de publicación inválido.', 'bad_id');
@@ -99,4 +110,43 @@ export async function itemRoute(req, res, u) {
   if (!fresh) content.notes = ['Usamos los datos de la última sincronización: Mercado Libre no respondió ahora.', ...content.notes];
   const [row] = await db.insert('rinde_suggestions', [{ user_id: u.id, item_id: id, input_hash: hash, variant, content, source: content.source, tokens: ai?.tokens || 0 }]);
   json(res, 200, { suggestion: { ...content, variant, created_at: row?.created_at || new Date().toISOString(), cached: false }, usage: usageOf([...mine, { item_id: id, created_at: new Date().toISOString() }], { paid, itemId: id }) });
+}
+
+/**
+ * Datos del simulador de campaña para una publicación (solo lectura): cargos de MeLi a su precio (listing_prices),
+ * lo que pagó en su última venta facturada (para el peor caso), envío y retenciones promedio de sus ventas,
+ * su publicidad de los últimos 30 días y la de toda la cuenta (de la caché de Campañas), y su conversión.
+ */
+export async function simContext(u, id) {
+  const { data } = await loadAccount(u.id);
+  const it = data.items.find((x) => x.id === id);
+  if (!it) throw new AppError(404, 'Esa publicación no está en tu cuenta.', 'not_found');
+  const lines = data.lines || [];
+  const mine = lines.filter((l) => l.item_id === id);
+  const rev = lines.reduce((t, l) => t + l.qty * l.unit_price, 0);
+  const taxRate = rev > 0 ? lines.reduce((t, l) => t + (l.fees?.taxes || 0), 0) / rev : 0;
+  const ship = (ls) => { const q = ls.filter((l) => l.fees?.shipping > 0).reduce((t, l) => t + l.qty, 0); return q ? ls.reduce((t, l) => t + (l.fees?.shipping || 0), 0) / q : null; };
+  const billed = mine.filter((l) => l.source === 'facturación' && l.qty && l.unit_price).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const last = billed[0];
+  const finMax = Math.max(0, ...billed.map((l) => (l.fees?.financing || 0) / (l.qty * l.unit_price)));
+  const feeHistory = last ? { price: last.unit_price, pct: ((last.fees?.commission || 0) - (last.fees?.fixed_fee || 0)) / (last.qty * last.unit_price), fixed: (last.fees?.fixed_fee || 0) / last.qty, financingPct: finMax } : null;
+  let fees = {};
+  try {
+    const token = await meli.getAccessToken(u.id);
+    fees = await readFees(token, [{ key: feeKey(it.listing_type, it.category_id, it.price), price: it.price, listing_type: it.listing_type, category_id: it.category_id }]);
+  } catch (e) { if (e.status === 401) throw e; console.error('[rinde][simulador][fees]', e.message); }
+  const camp = (await db.one('rinde_settings', { key: `campaigns:${u.id}` }).catch(() => null))?.value || null;
+  const ads = (camp?.ads || []).filter((a) => !a.noMetrics);
+  const adsItem = ads.find((a) => a.item_id === id) || null;
+  const acc = ads.reduce((t, a) => ({ cost: t.cost + (a.cost || 0), clicks: t.clicks + (a.clicks || 0), units: t.units + (a.direct_units || 0) + (a.indirect_units || 0) }), { cost: 0, clicks: 0, units: 0 });
+  const c = data.costs[costKey(it)];
+  return {
+    id, price: it.price, listing_type: it.listing_type, category_id: it.category_id,
+    offersFreeShipping: !!it.shipping?.free_shipping, shipCost: ship(mine) ?? ship(lines) ?? 0, shipEstimated: ship(mine) == null,
+    taxRate, fees, feeHistory, maxFinancingPct: it.listing_type === 'gold_pro' ? finMax : 0,
+    cost: c?.purchase != null && c.purchase !== '' ? Number(c.purchase) : null,
+    adsItem: adsItem ? { cost: adsItem.cost, clicks: adsItem.clicks, direct_units: adsItem.direct_units, indirect_units: adsItem.indirect_units } : null,
+    adsAccount: acc.clicks ? acc : null, adsFetchedAt: camp?.fetched_at || null,
+    item: { visits30: it.visits30, sales30: it.sales30 }, avgConv: accountConversion(data.items),
+  };
 }

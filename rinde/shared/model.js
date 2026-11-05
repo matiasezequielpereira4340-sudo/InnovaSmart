@@ -1,6 +1,6 @@
 // Arma el "modelo" de la cuenta a partir de los datos crudos.
 // Mismo código para la cuenta real (servidor) y para el demo (navegador).
-import { classify, computeProductProfit, buildRulePlan, lostSalesEstimate, rankProblems, prorate, replacementWarning, buildAlerts, groupOf, seasonInfo, seasonOf, itemHistory, shippingSuggestion } from './rules.js';
+import { classify, computeProductProfit, buildRulePlan, lostSalesEstimate, rankProblems, prorate, replacementWarning, buildAlerts, groupOf, seasonInfo, seasonOf, itemHistory, shippingSuggestion, shippingStatus } from './rules.js';
 import { CATEGORIES, GROUPS, SEASONS, THRESHOLDS as T } from './config.js';
 import { listingScore, accountConversion } from './score.js';
 import { guardPlan } from './plan-guard.js';
@@ -50,7 +50,8 @@ export function buildModel(data) {
       score.improvements = [{ text: ship.text, gain: 0, key: ship.kind, suggestion: true }, ...score.improvements].slice(0, 3);
       planOut = { ...plan, actions: [{ title: ship.title, detail: ship.text, impact: ship.kind === 'full' ? 'alto' : 'medio' }, ...(plan.actions || []).filter((a) => !/full|flex/i.test(a.title))].slice(0, 5) };
     }
-    return { ship, it, cost, profit, cls, lost, plan: planOut, group, season, score, warning: replacementWarning(profit) };
+    const shipStatus = shippingStatus(it, profit, seller); // Full/Flex: estado de cada una aunque no califique
+    return { ship, shipStatus, it, cost, profit, cls, lost, plan: planOut, group, season, score, warning: replacementWarning(profit) };
   });
 
   const counts = Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, 0]));

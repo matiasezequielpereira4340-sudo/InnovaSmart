@@ -177,6 +177,20 @@ export function seasonInfo(it, now = new Date()) {
   return cfg.months.includes(m) || cfg.pre.includes(m) ? null : s;
 }
 
+/** Estado operativo real (aunque el grupo sea "Abandonada" o "De temporada"): sin stock, pausada o en revisión. */
+export function opState(it) {
+  if ((it.available_quantity ?? 1) === 0 || (it.sub_status || []).includes('out_of_stock')) return 'sin stock';
+  if (it.status === 'paused') return 'pausada';
+  if (it.status === 'under_review' || it.infraction) return 'en revisión';
+  return null;
+}
+const GROUP_SINGULAR = { ABANDONADAS: 'Abandonada', TEMPORADA: 'De temporada' };
+/** Etiqueta del grupo con el estado real: "Abandonada · sin stock", "Abandonada · pausada". */
+export function groupLabel(group, it) {
+  const st = it ? opState(it) : null;
+  return GROUP_SINGULAR[group] && st ? `${GROUP_SINGULAR[group]} · ${st}` : null;
+}
+
 /** Grupo que ve el usuario (tarjetas y lista). Cada publicación cae en uno solo. */
 export function groupOf(it, cls, now = new Date()) {
   // "Sana" solo si vende: una publicación sin ventas en 6 meses nunca cuenta como sana.
@@ -435,11 +449,13 @@ export function buildAlerts({ rows, seller, prevReputation }) {
   const out = [];
   const add = (kind, it, message, severity = 'bad') =>
     out.push({ key: `${kind}:${it?.id || 'cuenta'}`, kind, item_id: it?.id || null, title: it?.title || null, message, severity });
-  for (const { it, profit } of rows) {
+  for (const { it, profit, group } of rows) {
+    // Si el diagnóstico la cuenta como abandonada (o de temporada), la alerta lo dice igual: mismo estado en todas las pestañas.
+    const pre = GROUP_SINGULAR[group] ? `${GROUP_SINGULAR[group]} · ` : '';
     if (profit?.hasCost && profit.units > 0 && profit.net < 0) add('margen_negativo', it, `Margen negativo: perdiste ${fmt(-profit.net)} en 30 días.`);
     if (profit?.hasCost && profit.units > 0 && profit.marginReplacement != null && profit.marginReplacement < 0) add('debajo_reposicion', it, 'Vendés por debajo del costo de reposición.');
-    if ((it.available_quantity ?? 1) === 0 || (it.sub_status || []).includes('out_of_stock')) add('sin_stock', it, 'Se quedó sin stock.');
-    else if (it.status === 'paused') add('pausada', it, 'La publicación está pausada.', 'warn');
+    if ((it.available_quantity ?? 1) === 0 || (it.sub_status || []).includes('out_of_stock')) add('sin_stock', it, pre ? `${pre}sin stock: se quedó sin stock${group === 'ABANDONADAS' ? ' y no vendió nada en 6 meses' : ''}.` : 'Se quedó sin stock.');
+    else if (it.status === 'paused') add('pausada', it, pre ? `${pre}pausada: la publicación está pausada${group === 'ABANDONADAS' ? ' y no vendió nada en 6 meses' : ''}.` : 'La publicación está pausada.', 'warn');
     if (it.infraction || it.status === 'under_review' || (it.sub_status || []).some((s) => ['forbidden', 'warning', 'held'].includes(s))) add('infraccion', it, 'Tiene una infracción o está bajo revisión.');
     if ((it.oldest_question_hours ?? 0) > T.QUESTION_ALERT_HOURS) add('preguntas', it, `Tiene ${it.questions_unanswered} pregunta(s) sin responder hace más de ${T.QUESTION_ALERT_HOURS} h.`, 'warn');
   }
@@ -517,4 +533,52 @@ export function shippingSuggestion(it, profit, seller = {}, now = new Date()) {
       text: `Vendés ~${fmtN(rate)} por semana hace ${weeks1} semanas en envío común${amba ? '' : ', así que si podés entregar en el día en AMBA'}: con Flex el comprador lo recibe en el día y Mercado Libre la muestra mejor.` };
   }
   return null;
+}
+
+/**
+ * Estado de Full y Flex de UNA publicación, siempre (aunque no califique): qué tiene, qué le falta y por qué.
+ * Mismos umbrales que shippingSuggestion: Full = 2+ por semana en 4 de 6 semanas y stock para 4 semanas;
+ * Flex = 1+ por semana en 4 de 6 semanas, en AMBA. Fuera de temporada o con la temporada terminando: no conviene Full.
+ * @returns { full: { state, text }, flex: { state, text } }  state: ya | conviene | falta | no_conviene | no_aplica
+ */
+export function shippingStatus(it, profit, seller = {}, now = new Date()) {
+  const w = Array.isArray(it.hist?.weeks) && it.hist.weeks.length >= 6 ? it.hist.weeks.slice(0, 6) : [0, 0, 0, 0, 0, 0];
+  const rate = w.slice(0, 4).reduce((a, b) => a + b, 0) / 4;
+  const weeks2 = w.filter((x) => x >= 2).length;
+  const weeks1 = w.filter((x) => x >= 1).length;
+  const stock = it.available_quantity ?? 0;
+  const stockWeeks = rate > 0 ? stock / rate : 0;
+  const logistic = it.shipping?.logistic;
+  const sug = shippingSuggestion(it, profit, seller, now);
+  const season = seasonOf(it, now);
+  const off = season && seasonInfo(it, now);
+  // Mismo orden que opState (sin stock primero): MeLi pausa sola la que se queda sin stock.
+  const inactive = stock <= 0 || (it.sub_status || []).includes('out_of_stock') ? 'no tiene stock' : it.status !== 'active' ? (it.status === 'paused' ? 'está pausada' : 'no está activa') : null;
+  const n = (x) => fmtN(x);
+
+  let full;
+  if (logistic === 'fulfillment') full = { state: 'ya', text: 'Ya está en Full.' };
+  else if (sug?.kind === 'full') full = { state: 'conviene', text: sug.text };
+  else if (sug?.kind === 'no_full_temporada') full = { state: 'no_conviene', text: `No conviene Full: ${sug.text.replace(/^Vende bien, pero /, '')}` };
+  else if (off) full = { state: 'no_conviene', text: `No conviene Full: es de ${season.season} y hoy está fuera de temporada (se prepara en ${SEASONS[season.season].prepare}).` };
+  else if (inactive) full = { state: 'no_aplica', text: `Para Full primero tiene que estar activa con stock: hoy ${inactive}.` };
+  else {
+    const falta = [];
+    if (weeks2 < 4) falta.push(`vender 2 por semana durante 4 de 6 semanas (hoy ${weeks2} de 6)`);
+    if (rate > 0 && stockWeeks < 4) falta.push(`tener stock para 4 semanas (hoy alcanza para ${Math.floor(stockWeeks)})`);
+    full = { state: 'falta', text: `Para Full te falta: ${falta.join(' y ')}.` };
+  }
+
+  let flex;
+  const where = [seller.state, seller.city].filter(Boolean).join(' ');
+  const amba = where ? AMBA_RE.test(where) || /buenos aires/i.test(where) : null;
+  if (logistic === 'flex' || it.shipping?.flex) flex = { state: 'ya', text: 'Ya tiene Flex.' };
+  else if (logistic === 'fulfillment') flex = { state: 'no_aplica', text: 'Está en Full: Flex no suma.' };
+  else if (amba === false) flex = { state: 'no_aplica', text: `Flex es para entregas en el día en AMBA y tu cuenta figura en ${where}.` };
+  else if (sug?.kind === 'flex') flex = { state: 'conviene', text: sug.text };
+  else if (off) flex = { state: 'no_conviene', text: `Fuera de temporada (${season.season}): no hace falta Flex ahora.` };
+  else if (inactive) flex = { state: 'no_aplica', text: `Para Flex primero tiene que estar activa con stock: hoy ${inactive}.` };
+  else if (weeks1 >= 4) flex = { state: 'conviene', text: `Vende ~${n(rate)} por semana: con Flex el comprador lo recibe en el día.` };
+  else flex = { state: 'falta', text: `Para Flex te falta: vender al menos 1 por semana durante 4 de 6 semanas (hoy ${weeks1} de 6).` };
+  return { full, flex };
 }

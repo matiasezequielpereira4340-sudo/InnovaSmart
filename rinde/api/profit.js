@@ -9,6 +9,8 @@ import { itemRoute } from './_lib/item.js';
 
 const num = (v) => {
   if (v === '' || v == null) return null;
+  // La app manda números ya convertidos (1234.5): no se les sacan los puntos (antes 1234.5 se guardaba como 12345).
+  if (typeof v === 'number') return Number.isFinite(v) && v >= 0 ? v : NaN;
   const n = Number(String(v).replace(/\$/g, '').replace(/\./g, '').replace(',', '.').trim());
   return Number.isFinite(n) && n >= 0 ? n : NaN;
 };

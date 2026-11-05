@@ -1,8 +1,10 @@
 // Rinde — app (diagnóstico, rentabilidad, alertas). Funciona en modo real (/app) y DEMO (/demo).
 import { I, hydrateIcons } from './icons.js';
 import { CATEGORIES, GROUPS, THRESHOLDS, waLink, PLAN_PRICE_ARS, EMAIL_ENABLED, COPY } from '../shared/config.js';
-import { fmtMoney, fmtPct, conversion, LISTING_LABEL, ALERT_LABELS, competitorRef, priceGap } from '../shared/rules.js';
-import { evaluateAll, summarize, actionsByItem, splitIdle, campaignStateText } from '../shared/campaigns.js';
+import { fmtMoney, fmtPct, conversion, LISTING_LABEL, ALERT_LABELS, competitorRef, priceGap, groupLabel, opState } from '../shared/rules.js';
+import { evaluateAll, summarize, actionsByItem, splitIdle, campaignStateText, feeKey, feeFromHistory } from '../shared/campaigns.js';
+import { simSources, scenarios, simulate, trialBudget, SIM_NOTE } from '../shared/simulator.js';
+import { accountConversion } from '../shared/score.js';
 import { regenState, planChanged } from '../shared/plans.js';
 import { scoreAllows, conflictOf } from '../shared/plan-guard.js';
 const MIN_VISITS_CONV = 30; // igual que la nota: con menos visitas la conversión no dice nada
@@ -66,9 +68,24 @@ function toast(msg) {
 }
 
 // ─────────────────────────────── Helpers UI ────────────────────────────────
-function catTag(key) {
+function catTag(key, it = null) {
   const c = GROUPS[key] || CATEGORIES[key];
-  return `<span class="tag ${TONE_TAG[c.tone]}">${I[c.icon]} ${esc(c.label)}</span>`;
+  const real = groupLabel(key, it); // "Abandonada · sin stock": el estado real siempre a la vista
+  return `<span class="tag ${TONE_TAG[real ? 'bad' : c.tone]}">${I[real ? 'alert' : c.icon]} ${esc(real || c.label)}</span>`;
+}
+/** Debajo de la tarjeta de un grupo: cuántas están además sin stock o pausadas. */
+function tileStates(key) {
+  // "Sin stock 0" no puede contradecir a Alertas: si hay abandonadas o de temporada sin stock/pausadas, se dice acá.
+  const OTHER = { SIN_STOCK: 'sin stock', PAUSADAS: 'pausada' };
+  if (OTHER[key]) {
+    const k = S.model.rows.filter((r) => ['ABANDONADAS', 'TEMPORADA'].includes(r.group) && opState(r.it) === OTHER[key]).length;
+    return k ? `<span class="tile-sub">y ${k} abandonada${k === 1 ? '' : 's'} o de temporada ${OTHER[key] === 'pausada' ? (k === 1 ? 'pausada' : 'pausadas') : 'sin stock'}</span>` : '';
+  }
+  if (!['ABANDONADAS', 'TEMPORADA'].includes(key)) return '';
+  const n = {};
+  for (const r of S.model.rows) if (r.group === key) { const st = opState(r.it); if (st) n[st] = (n[st] || 0) + 1; }
+  const txt = Object.entries(n).map(([k, v]) => `${v} ${k === 'pausada' && v > 1 ? 'pausadas' : k}`).join(' · ');
+  return txt ? `<span class="tile-sub">${esc(txt)}</span>` : '';
 }
 const shipLabel = (it) => (it.shipping?.logistic === 'fulfillment' ? 'Full' : it.shipping?.flex ? 'Flex' : 'Normal');
 const ago = (iso) => {
@@ -213,7 +230,7 @@ function diagnosisView() {
   const shown = Object.values(GROUPS).filter((c) => !(c.hideEmpty && !gc[c.key]));
   const tiles = shown.map((c) => (c.key === 'PIERDE_PLATA' && noCosts)
     ? `<a class="cat-tile ${c.tone} is-pending" href="#/rentabilidad" aria-label="Pierde plata: cargá tus costos para calcularlo"><span class="n n-text">Cargá tus costos para calcularlo</span><span class="l">${I[c.icon]} ${esc(c.short)}</span></a>`
-    : `<button class="cat-tile ${c.tone}" data-filter="${c.key}" aria-label="Filtrar ${esc(c.label)}: ${gc[c.key]}"><span class="n">${gc[c.key]}</span><span class="l">${I[c.icon]} ${esc(c.short)}</span></button>`).join('');
+    : `<button class="cat-tile ${c.tone}" data-filter="${c.key}" aria-label="Filtrar ${esc(c.label)}: ${gc[c.key]}"><span class="n">${gc[c.key]}</span><span class="l">${I[c.icon]} ${esc(c.short)}</span>${tileStates(c.key)}</button>`).join('');
   const chips = [['TODAS', 'Todas', total, 'search'], ...shown.filter((c) => !(c.key === 'PIERDE_PLATA' && noCosts)).map((c) => [c.key, c.short, gc[c.key], c.icon])]
     .map(([k, l, n, ic]) => `<button class="chip" data-filter="${k}" aria-pressed="${S.filter === k}">${I[ic]} ${esc(l)} <span class="count">${n}</span></button>`).join('');
   const rows = sortedRows().filter((r) => S.filter === 'TODAS' || r.group === S.filter);
@@ -250,9 +267,31 @@ function diagnosisView() {
       ${helpBox()}
     </div>
   </div>
+  ${shipSection()}
   <h2 style="margin:30px 0 10px;font-size:1.4rem">Publicaciones</h2>
   <div class="cat-filter" role="toolbar" aria-label="Filtrar por categoría">${chips}</div>
   <div class="items">${rows.map(itemCard).join('') || '<div class="empty">No hay publicaciones en esta categoría.</div>'}</div>`;
+}
+
+const SHIP_TAG = { ya: ['tag-ok', 'Ya tiene'], conviene: ['tag-accent', 'Conviene'], falta: ['tag-neutral', 'Todavía no'], no_conviene: ['tag-warn', 'No conviene'], no_aplica: ['tag-neutral', 'No aplica'] };
+const shipTag = (st) => `<span class="tag ${SHIP_TAG[st.state][0]}" style="padding:0 7px">${SHIP_TAG[st.state][1]}</span>`;
+function shipLines(ss) {
+  return `<div class="ship-line"><b>Full</b> ${shipTag(ss.full)} <span class="small">${esc(ss.full.text)}</span></div><div class="ship-line"><b>Flex</b> ${shipTag(ss.flex)} <span class="small">${esc(ss.flex.text)}</span></div>`;
+}
+/** Diagnóstico: Full y Flex de todas las publicaciones, aunque ninguna califique. */
+function shipSection() {
+  const rows = S.model.rows.filter((r) => r.shipStatus);
+  if (!rows.length) return '';
+  const c = (k, st) => rows.filter((r) => r.shipStatus[k].state === st).length;
+  const order = { conviene: 0, no_conviene: 1, falta: 2, ya: 3, no_aplica: 4 };
+  const sorted = [...rows].sort((a, b) => order[a.shipStatus.full.state] - order[b.shipStatus.full.state] || (b.it.sales90 || 0) - (a.it.sales90 || 0));
+  const head = [c('full', 'conviene') && `${c('full', 'conviene')} para pasar a Full`, c('flex', 'conviene') && `${c('flex', 'conviene')} para sumar Flex`, c('full', 'ya') && `${c('full', 'ya')} ya en Full`, c('flex', 'ya') && `${c('flex', 'ya')} con Flex`].filter(Boolean).join(' · ') || 'Ninguna califica todavía para Full ni Flex';
+  return `<section class="card ship-sec" aria-labelledby="ship-h" style="margin-top:18px">
+    <h2 id="ship-h" style="margin:0 0 4px;font-size:1.2rem">${I.truck || I.info} Full y Flex</h2>
+    <p class="small" style="margin:0 0 8px"><b>${esc(head)}.</b> Full: vender 2 por semana en 4 de las últimas 6 semanas y tener stock para 4 semanas. Flex: 1 por semana en 4 de 6, en AMBA.</p>
+    <details><summary class="small">Ver el estado de cada publicación (${rows.length})</summary>
+      <ul class="ship-list">${sorted.map((r) => `<li><div>${itemLink(r.it.id, r.it.title)} <span class="tiny muted">· ${esc(shipLabel(r.it))}</span></div>${shipLines(r.shipStatus)}</li>`).join('')}</ul>
+    </details></section>`;
 }
 
 function topList(top) {
@@ -400,11 +439,12 @@ function campaignsView() {
   ${idleBox(sp)}
   <div class="camp-list">${[...sp.ads.map(({ a, e }, i) => adsCard(a, e, 'a' + i)), ...(c.ads || []).filter((a) => a.noMetrics && a.item).map(adsCardNoMetrics)].join('') || (sp.idleAds.length || sp.idleCampaigns.length ? '' : `<div class="empty">${c.hasAdvertiser === false ? 'No usás Product Ads.' : 'Sin publicidad en los últimos 30 días.'}</div>`)}</div>
   <div style="margin-top:16px">${helpBox()}</div>`;
+  const sim = `<div style="margin-bottom:18px">${simulatorCard(null, { pick: true })}</div>`;
   if (c.preview) {
-    return head + `<div class="locked-preview"><div class="lp-inner" aria-hidden="true">${body}</div>
+    return head + sim + `<div class="locked-preview"><div class="lp-inner" aria-hidden="true">${body}</div>
       <div class="lp-cta card"><h3>${I.lock} Disponible en Plan Rinde</h3><p class="small">Para cada promo que te ofrece Mercado Libre y cada publicidad que pagás, te decimos si te deja plata o te la come. Esto es un ejemplo.</p><a class="btn btn-primary btn-sm" href="/suscribirme">Ver el Plan Rinde</a></div></div>`;
   }
-  return head + body;
+  return head + sim + body;
 }
 
 function campaignsNotice() {
@@ -446,7 +486,7 @@ function seasonBox(m) {
 function listingRow(r) {
   const sc = r.score;
   return `<article class="lrow">
-    <div class="lrow-top">${scoreBadge(sc)}<div class="lrow-title">${itemLink(r.it.id, r.it.title)}</div>${catTag(r.group)}</div>
+    <div class="lrow-top">${scoreBadge(sc)}<div class="lrow-title">${itemLink(r.it.id, r.it.title)}</div>${catTag(r.group, r.it)}</div>
     ${sc.improvements.length ? `<ol class="lrow-fix">${sc.improvements.map((x) => `<li>${esc(x.text)} <span class="muted">${x.suggestion ? 'sugerencia' : '+' + x.gain}</span>${genBtn(r.it.id, x.key)}</li>`).join('')}</ol>` : '<p class="small muted" style="margin:6px 0 0">Bien armada. Mantenela así.</p>'}
     <details class="lrow-more"><summary class="small">Cómo se calcula</summary><ul class="small">${sc.criteria.map((c) => `<li>${esc(c.label)} (peso ${Math.round(c.weight)}): ${esc(c.note)} → ${Math.round(c.value * c.weight)}/${Math.round(c.weight)}</li>`).join('')}</ul></details>
   </article>`;
@@ -477,7 +517,7 @@ function listingsView() {
       <p class="small muted">Rojo menos de 50 · amarillo 50 a 75 · verde más de 75. Si un dato no se puede leer, ese criterio no cuenta.</p>
     </section>
     <section class="card">
-      <h3 style="margin-top:0">Tus 10 peores publicaciones</h3>
+      <h3 style="margin-top:0">${worst.length < 10 ? 'Tus publicaciones de peor a mejor' : 'Tus 10 peores publicaciones'}</h3>
       <ol class="worst">${worst.map((r) => `<li>${scoreBadge(r.score)} ${itemLink(r.it.id, r.it.title)}</li>`).join('')}</ol>
     </section>
   </div>
@@ -501,7 +541,7 @@ function itemCard(r) {
   const reasons = (cls.reasons || []).filter((x) => x.text && !conflictOf({ title: x.text }, allow));
   return `<details class="item tone-${GROUPS[r.group].tone}" id="it-${esc(it.id)}">
     <summary>
-      <div class="i-top"><div class="i-title">${itemLink(it.id, it.title)}</div><span style="display:flex;gap:6px;flex-wrap:wrap">${scoreBadge(r.score)}${catTag(r.group)}</span></div>
+      <div class="i-top"><div class="i-title">${itemLink(it.id, it.title)}</div><span style="display:flex;gap:6px;flex-wrap:wrap">${scoreBadge(r.score)}${catTag(r.group, it)}</span></div>
       <div class="i-meta"><span>Precio <b>${fmtMoney(it.price)}</b></span>${it.visits30 != null ? `<span>Visitas 30 d <b>${it.visits30.toLocaleString('es-AR')}</b></span>` : ''}<span>Ventas 30 d <b>${it.sales30 ?? 0}</b></span>${conv != null && (it.visits30 || 0) >= MIN_VISITS_CONV ? `<span>Conversión <b>${fmtPct(conv)}</b></span>` : ''}</div>
       <div class="i-head">${plan.verdict === 'liquidar' ? `<span class="tag tag-bad">${I.x} Sin salida</span> ` : ''}${esc(plan.headline)}</div>
       <span class="i-more">Ver plan de acción ${I.chevron}</span>
@@ -570,7 +610,7 @@ function detailView(id) {
     <div class="d-info">
       <h1 class="d-title">${esc(it.title)}</h1>
       <div class="d-price num">${fmtMoney(it.price)}</div>
-      <div class="d-tags">${states} ${catTag(r.group)}</div>
+      <div class="d-tags">${states} ${catTag(r.group, it)}</div>
       <div class="tiny muted">${esc(it.id)} · grupo del diagnóstico: ${esc(GROUPS[r.group].label)}</div>
       ${pl ? `<a class="btn btn-light btn-sm" style="margin-top:8px" href="${esc(pl)}" target="_blank" rel="noopener">Ver en Mercado Libre ↗</a>` : DEMO ? '<div class="tiny muted" style="margin-top:6px">En el demo no hay link a Mercado Libre (publicación de ejemplo).</div>' : ''}
     </div></section>`;
@@ -614,7 +654,7 @@ function detailView(id) {
 
   // f) Full/Flex y temporada
   const extras = [];
-  if (r.ship) extras.push(`<div class="notice notice-info">${I.truck || I.info}<div><b>${esc(r.ship.title)}.</b> ${esc(r.ship.text)}</div></div>`);
+  if (r.shipStatus) extras.push(`<div class="ship-box">${shipLines(r.shipStatus)}</div>`);
   if (r.season) { const cfg = SEASONS[r.season.season]; extras.push(`<div class="notice notice-info">${I.calendar}<div><b>Producto de ${esc(r.season.season)}.</b> Hoy está fuera de temporada: no repongas ahora. Preparala un mes antes (${esc(cfg?.prepare || '')}).</div></div>`); }
 
   // g) Plan
@@ -627,7 +667,8 @@ function detailView(id) {
   ${block('numeros', 'Números', nums, open('numeros'))}
   ${block('plata', 'Desglose de plata por venta', plata, open('plata'))}
   ${camp}
-  ${extras.length ? block('envio', r.ship && r.season ? 'Full/Flex y temporada' : r.ship ? 'Full / Flex' : 'Temporada', extras.join(''), open('envio')) : ''}
+  ${block('sim', 'Simulador de campaña', simulatorCard(id).replace(/<h3[^>]*>[\s\S]*?<\/h3>/, ''), open('sim'))}
+  ${extras.length ? block('envio', r.season ? 'Full / Flex y temporada' : 'Full / Flex', extras.join(''), open('envio')) : ''}
   ${block('plan', 'Plan de acción', planB, open('plan'))}
   ${block('sugerencias', 'Sugerencias para copiar y pegar', suggestionBlock(r, x), open('sugerencias'))}`;
 }
@@ -772,6 +813,141 @@ function bindDetail() {
   if (routeParam('generar') === '1' && !S.sugg[id]) { history.replaceState(null, '', `#/publicacion/${id}`); generateSuggestion(id); }
 }
 
+// ─── Simulador de campaña (solo Plan Rinde) ──────────────────────────────────
+// Visitas estimadas = clics. Mercado Libre no informa a cuánta gente se muestra el aviso: eso no se calcula.
+function demoFeeFor(it) {
+  const fixed = it.price >= 33000 ? 0 : it.price < 15000 ? 1115 : it.price < 26000 ? 2300 : 2810;
+  return it.listing_type === 'gold_pro' ? { percentage: 14.5, fixed, financing: it.price * 0.115, source: 'meli' } : it.listing_type === 'free' ? null : { percentage: 13.5, fixed, financing: 0, source: 'meli' };
+}
+function demoSimCtx(id) {
+  const r = S.model.rows.find((x) => x.it.id === id);
+  if (!r) return null;
+  const it = r.it;
+  const ad = getCampaignsDemo().ads.find((a) => a.item_id === id && !a.noMetrics);
+  const all = getCampaignsDemo().ads.filter((a) => !a.noMetrics);
+  return {
+    id, price: it.price, listing_type: it.listing_type, offersFreeShipping: !!it.shipping?.free_shipping, shipCost: it.price >= 33000 ? 7900 : 4200, taxRate: 0.035,
+    fees: { demo: demoFeeFor(it) }, feeHistory: null, maxFinancingPct: it.listing_type === 'gold_pro' ? 0.115 : 0,
+    cost: r.cost?.purchase ?? null,
+    adsItem: ad ? { cost: ad.cost, clicks: ad.clicks, direct_units: ad.direct_units, indirect_units: ad.indirect_units } : null,
+    adsAccount: { cost: all.reduce((t, a) => t + a.cost, 0), clicks: all.reduce((t, a) => t + a.clicks, 0) },
+    item: { visits30: it.visits30, sales30: it.sales30 }, avgConv: accountConversion(S.model.rows.map((x) => x.it)),
+  };
+}
+function loadSim(id) {
+  if (DEMO) return demoSimCtx(id);
+  S.sim = S.sim || {};
+  if (!S.sim[id]) {
+    S.sim[id] = { loading: true };
+    api(`/api/item?id=${encodeURIComponent(id)}&sim=1`).then((d) => { S.sim[id] = d; renderSim(); }).catch((e) => { S.sim[id] = { error: e.message }; renderSim(); });
+  }
+  return S.sim[id];
+}
+const simItems = () => S.model.rows.filter((r) => r.it.status === 'active').sort((a, b) => (b.it.sales90 || 0) - (a.it.sales90 || 0) || a.it.title.localeCompare(b.it.title));
+
+/** Tarjeta del simulador. pick: muestra el selector de publicación (pestaña Campañas). */
+function simulatorCard(id, { pick = false } = {}) {
+  if (!DEMO && !S.paid) return `<section class="card sim" id="simwrap"><h3 style="margin-top:0">${I.chart} Simulador de campaña</h3><div class="notice notice-info">${I.lock}<div><b>Disponible en Plan Rinde.</b> Elegís una publicación, un presupuesto por día y los días, y Rinde te dice cuánto vendés, qué ACOS te deja y cuánto te queda. <a href="/suscribirme">Ver el Plan Rinde</a></div></div></section>`;
+  const items = simItems();
+  if (!id) id = S.simPick || items[0]?.it.id;
+  if (!id) return `<section class="card sim" id="simwrap"><h3 style="margin-top:0">${I.chart} Simulador de campaña</h3><p class="small">No tenés publicaciones activas para simular.</p></section>`;
+  const f = (S.simForm ||= {})[id] ||= { budget: '', days: 7, cpc: '', conv: '' };
+  return `<section class="card sim" id="simwrap" data-sim="${esc(id)}">
+    <h3 style="margin-top:0">${I.chart} Simulador de campaña</h3>
+    <p class="small muted" style="margin-top:0">Elegí cuánto querés gastar por día y cuántos días. Rinde hace la cuenta con tus cargos reales de Mercado Libre. No activa nada.</p>
+    <div class="sim-form">
+      ${pick ? `<div class="field sim-pick"><label for="sim-item">Publicación</label><select id="sim-item">${items.map((r) => `<option value="${esc(r.it.id)}" ${r.it.id === id ? 'selected' : ''}>${esc(r.it.title.slice(0, 70))} · ${fmtMoney(r.it.price)}</option>`).join('')}</select></div>` : ''}
+      <div class="field"><label for="sim-budget">Presupuesto por día</label><input id="sim-budget" inputmode="decimal" placeholder="$" value="${esc(f.budget)}"></div>
+      <div class="field"><label for="sim-days">Días</label><input id="sim-days" inputmode="numeric" value="${esc(f.days)}"></div>
+      <div class="field"><label for="sim-cpc">Costo por clic <span class="muted">(opcional)</span></label><input id="sim-cpc" inputmode="decimal" placeholder="lo calculamos" value="${esc(f.cpc)}"></div>
+      <div class="field"><label for="sim-conv">Conversión % <span class="muted">(opcional)</span></label><input id="sim-conv" inputmode="decimal" placeholder="la calculamos" value="${esc(f.conv)}"></div>
+    </div>
+    <div id="sim-res" aria-live="polite">${simResults(id)}</div>
+    <p class="d-fixed small">${I.info} ${esc(SIM_NOTE)}</p>
+  </section>`;
+}
+
+function simResults(id) {
+  const ctxData = loadSim(id);
+  if (!ctxData || ctxData.loading) return `<p class="small muted">${I.loader.replace('<svg', '<svg class="spin"')} Leyendo los cargos de Mercado Libre para esta publicación…</p>`;
+  if (ctxData.error) return `<div class="notice notice-warn">${I.info}<div>${esc(ctxData.error)}</div></div>`;
+  const r = S.model.rows.find((x) => x.it.id === id);
+  const f = S.simForm[id];
+  const src = simSources(ctxData);
+  const manual = { cpc: parseNum(f.cpc) || null, conv: (parseNum(f.conv) || 0) / 100 || null };
+  const sc = scenarios(src, manual);
+  const medio = sc.list[sc.single ? 0 : 1];
+  const trial = trialBudget(medio.cpc);
+  const budget = parseNum(f.budget) || trial;
+  const days = Math.max(1, Math.min(90, Math.round(parseNum(f.days) || 7)));
+  const cost = r?.cost?.purchase ?? ctxData.cost ?? null;
+  const ctx = { listingType: ctxData.listing_type, maxFinancingPct: ctxData.maxFinancingPct, offersFreeShipping: ctxData.offersFreeShipping, shipCost: ctxData.shipCost, taxRate: ctxData.taxRate,
+    feeAt: (p) => [DEMO ? ctxData.fees.demo : ctxData.fees?.[feeKey(ctxData.listing_type, ctxData.category_id, p)], feeFromHistory(ctxData.feeHistory, p)].filter(Boolean) };
+  const runs = sc.list.map((x) => ({ x, s: simulate({ price: ctxData.price, budget, days, cpc: x.cpc, conv: x.conv, ctx, cost }) }));
+  const m = (v) => fmtMoney(v);
+  const n1 = (v) => (Math.round(v * 10) / 10).toLocaleString('es-AR');
+  const srcLine = (label, s, fmtV) => (s ? `<li><b>${label}:</b> ${fmtV(s.value)} · sale ${s.source.startsWith('el ') ? 'del ' + esc(s.source.slice(3)) : 'de ' + esc(s.source)} (${esc(s.detail)}).</li>` : '');
+  const sources = `<ul class="small sim-src">${srcLine('Costo por clic', sc.cpc, (v) => m(v))}${srcLine('Conversión', sc.conv, (v) => fmtPct(v))}${sc.explain.map((t) => `<li>${esc(t)}</li>`).join('')}
+    <li><b>Presupuesto:</b> ${m(budget)} por día × ${days} día${days === 1 ? '' : 's'}${f.budget ? '' : ' (sugerido: junta ~100 clics para medir)'}. Suponemos que Mercado Libre gasta todo el presupuesto.</li></ul>`;
+  if (runs[0].s.noFees) return sources + `<div class="notice notice-warn">${I.info}<div>No pudimos calcular los cargos de Mercado Libre para este precio: sin eso no simulamos el resultado.</div></div>`;
+  const u = runs[0].s.unit;
+  const head = `<tr><th></th>${runs.map(({ x }) => `<th>${esc(x.label)}<div class="tiny muted">${m(x.cpc)} por clic · ${fmtPct(x.conv)} conv.</div></th>`).join('')}</tr>`;
+  // Mismas filas para la tabla (escritorio) y para las tarjetas por escenario (celular).
+  const ROWS = [
+    ['Gasto en publicidad', (s) => m(s.spend)],
+    ['Visitas estimadas (clics)', (s) => Math.round(s.visits).toLocaleString('es-AR')],
+    ['Ventas', (s) => n1(s.sales)],
+    ['Facturación', (s) => m(s.revenue)],
+    ['Cargos de Mercado Libre', (s) => '−' + m(s.charges)],
+    ['ACOS', (s) => (s.acos == null ? 'sin ventas' : fmtPct(s.acos)), (s) => (s.acosOverMargin ? 'neg' : '')],
+    ['Te queda antes del costo', (s) => m(s.beforeCost), (s) => (s.beforeCost < 0 ? 'neg' : '')],
+    ...(cost != null ? [
+      ['Costo del producto', (s) => '−' + m(s.productCost)],
+      ['<b>Te queda</b>', (s) => `<b>${m(s.left)}</b>`, (s) => (s.left < 0 ? 'neg' : 'pos')],
+      ['Resultado', (s) => (s.verdict === 'gana' ? '<span class="tag tag-ok">Te deja plata</span>' : '<span class="tag tag-bad">Pierde plata</span>')],
+    ] : []),
+  ];
+  const table = `<div class="table-wrap desktop-only"><table class="data sim-table"><thead>${head}</thead><tbody>${ROWS.map(([l, fn, cls = () => '']) => `<tr><td class="sim-lbl">${l}</td>${runs.map(({ s }) => `<td class="num ${cls(s)}">${fn(s)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <div class="pcards mobile-only">${runs.map(({ x, s }) => `<div class="pc sim-pc"><div class="row"><b>${esc(x.label)}</b><span class="tiny">${m(x.cpc)} por clic · ${fmtPct(x.conv)} conv.</span></div>${ROWS.map(([l, fn, cls = () => '']) => `<div class="row"><span>${l}</span><b class="${cls(s)}">${fn(s)}</b></div>`).join('')}</div>`).join('')}</div>`;
+  const s0 = runs[0].s;
+  const acosBox = cost != null
+    ? (s0.maxAcos > 0
+      ? `<div class="notice notice-info sim-acos">${I.tag}<div><b>ACOS máximo que aguanta sin perder plata: ${fmtPct(s0.maxAcos)}.</b> Cargá en Mercado Libre un ACOS objetivo de <b>${Math.round(s0.targetAcos * 100)} %</b> (dejamos un 20 % de colchón por si sube el clic o los cargos).${runs.some((x) => x.s.acosOverMargin) ? ' En los escenarios en rojo el ACOS pasa ese máximo: cada venta por publicidad pierde plata.' : ''}</div></div>`
+      : `<div class="notice notice-bad sim-acos">${I.alert}<div><b>Esta publicación ya pierde plata sin publicidad</b> (cargos + costo superan el precio). No le pongas publicidad hasta ajustar el precio o el costo.</div></div>`)
+    : `<div class="notice notice-warn sim-acos">${I.info}<div><b>Sin costo no hay veredicto.</b> Antes del costo, el ACOS máximo es ${fmtPct(s0.maxAcosBeforeCost)}; con el costo va a ser menor. Cargalo y te decimos qué ACOS objetivo poner en Mercado Libre.
+      <form class="camp-cost sim-cost" data-sku="${esc(r ? costKey(r.it) : id)}"><label class="small" for="sim-costin">Costo del producto</label><input id="sim-costin" inputmode="decimal" placeholder="$ por unidad"><button class="btn btn-light btn-sm" type="submit">Guardar</button></form></div></div>`;
+  const tryIt = !sc.single ? `<p class="sim-try"><b>Probá 7 días con ${m(trial)} por día y volvé a mirar:</b> con ~100 clics ya vas a tener tu costo por clic y tu conversión reales, y este simulador los usa solos.</p>` : '';
+  return sources + table + `<p class="tiny muted">Cargos por venta a ${m(ctxData.price)}: ${m(u.charges.total)}. ${chargesDetail(u.charges)}${ctxData.shipEstimated && u.charges.shipping ? ' · envío: promedio de tus ventas' : ''}</p>` + acosBox + tryIt;
+}
+
+function renderSim() {
+  const w = document.getElementById('simwrap');
+  if (!w) return;
+  const id = w.dataset.sim;
+  const res = document.getElementById('sim-res');
+  if (res && id) { res.innerHTML = simResults(id); hydrateIcons(res); bindSimCost(); }
+}
+function bindSimCost() {
+  document.querySelector('.sim-cost')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const v = e.target.querySelector('input').value;
+    if (await applyCosts([{ sku: e.target.dataset.sku, purchase: v, replacement: '' }])) { if (S.sim) for (const k of Object.keys(S.sim)) delete S.sim[k]; toast('Costo guardado. Recalculamos.'); render(); }
+  });
+}
+function bindSim() {
+  const w = document.getElementById('simwrap');
+  if (!w?.dataset.sim) return;
+  const id = w.dataset.sim;
+  const set = (k, el) => el?.addEventListener('input', () => { S.simForm[id][k] = el.value; renderSim(); });
+  set('budget', document.getElementById('sim-budget'));
+  set('days', document.getElementById('sim-days'));
+  set('cpc', document.getElementById('sim-cpc'));
+  set('conv', document.getElementById('sim-conv'));
+  document.getElementById('sim-item')?.addEventListener('change', (e) => { S.simPick = e.target.value; render(); document.getElementById('simwrap')?.scrollIntoView({ block: 'start' }); });
+  bindSimCost();
+}
+// ─── Fin simulador ──────────────────────────────────────────────────────────
+
 // ─────────────────────────────── Rentabilidad ──────────────────────────────
 const COLS = [
   ['title', 'Producto'], ['units', 'Ventas'], ['revenue', 'Facturación'], ['fees', 'Cargos ML'], ['ads', 'Publicidad'],
@@ -797,15 +973,17 @@ function profitRows() {
 function profitView() {
   if (!DEMO && !S.paid) return `<div class="page-head"><h1>Rentabilidad</h1></div>${lockCard('La rentabilidad')}`;
   const k = S.model.kpis;
-  const sales90 = S.model.rows.reduce((t, r) => t + (r.it.sales90 || 0), 0);
-  if (!sales90) {
+  // Un solo período para toda la pestaña (el del cálculo): últimos 30 días. Se dice una vez, en el título.
+  const units30 = S.model.rows.reduce((t, r) => t + (r.profit.units || 0), 0);
+  if (!units30) {
     return `<div class="page-head"><div><h1>Rentabilidad real</h1><div class="small muted">Últimos 30 días · cargos de la facturación de Mercado Libre</div></div></div>
-    <div class="notice notice-info" style="margin-bottom:14px" role="status">${I.info}<div><b>Sin ventas en los últimos 90 días: la rentabilidad aparece cuando vendas.</b> Mientras tanto podés dejar cargados los costos de tus productos, así el día que vendas ya ves cuánto te quedó.</div></div>
+    <div class="notice notice-info" style="margin-bottom:14px" role="status">${I.info}<div><b>Sin ventas en este período: la rentabilidad aparece cuando vendas.</b> Mientras tanto podés dejar cargados los costos de tus productos, así el día que vendas ya ves cuánto te quedó.</div></div>
     <div class="card" style="max-width:640px"><h3>${I.upload} Costos de tus productos</h3>
       <p class="small muted">Descargá la plantilla con tus SKUs, completá el costo de compra y subila, o cargalos cuando tengas ventas.</p>
       <div class="help-links"><button class="btn btn-light btn-sm" id="tpl">${I.download} Descargar plantilla</button>
       <label class="btn btn-light btn-sm" for="file">${I.upload} Subir CSV o Excel</label><input type="file" id="file" class="sr" accept=".csv,.xlsx,.xls,text/csv"></div>
       <div id="upload-msg" class="small" style="margin-top:8px" role="status"></div></div>
+    <div style="margin-top:16px">${costList()}</div>
     <div style="margin-top:16px">${helpBox()}</div>`;
   }
   const rows = profitRows();
@@ -855,6 +1033,7 @@ function profitView() {
     </div>
   </div>
 
+  <div style="margin-top:16px">${costList()}</div>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:22px 0 8px;flex-wrap:wrap">
     <h2 style="margin:0;font-size:1.25rem">Por producto</h2>
     <div style="display:flex;gap:8px;align-items:center"><label class="small" for="msort">Ordenar</label>
@@ -882,7 +1061,7 @@ function profitView() {
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><b style="line-height:1.3">${itemLink(p.r.it.id, p.title)}</b>${p.r.profit.hasCost && p.units ? (p.net < 0 ? `<span class="tag tag-bad">${I.down} Pierde</span>` : `<span class="tag tag-ok">${I.up} Gana</span>`) : `<span class="tag tag-neutral">${p.r.profit.hasCost ? 'Sin ventas' : 'Costo sin cargar'}</span>`}</div>
     ${p.r.warning ? `<div class="notice notice-bad small" style="margin:8px 0;padding:8px 10px">${I.alert}<div>${esc(p.r.warning)}</div></div>` : ''}
     ${p.r.profit.shipEats ? `<div class="notice notice-bad small" style="margin:8px 0;padding:8px 10px">${I.alert}<div><b>El envío gratis te come esta venta:</b> envío ${fmtMoney(p.r.profit.fees.shipping)} + cargo fijo ${fmtMoney(p.r.profit.fixedFee)} = ${fmtPct(p.r.profit.shipFixedShare)} del precio.</div></div>` : ''}
-    <div class="row"><span>Ventas 30 d</span><b>${p.units} u · ${p.units ? fmtMoney(p.revenue) : '—'}</b></div>
+    <div class="row"><span>Ventas</span><b>${p.units} u · ${p.units ? fmtMoney(p.revenue) : '—'}</b></div>
     <div class="row"><span>Cargos ML + publicidad</span><b>${p.units ? fmtMoney(p.fees + p.ads) : '—'}</b></div>
     <div class="row"><span>Ganancia neta</span><b class="${cls(p.net)}">${!p.r.profit.hasCost ? 'costo sin cargar' : p.units ? fmtMoney(p.net) : '—'}</b></div>
     <div class="row"><span>Margen / a reposición</span><b>${p.margin == null ? '—' : fmtPct(p.margin)} / ${p.marginR == null ? '—' : fmtPct(p.marginR)}</b></div>
@@ -891,6 +1070,52 @@ function profitView() {
   </div>`).join('')}</div>
   <p class="tiny muted" style="margin-top:10px">Ganancia = precio − comisión − envío a tu cargo − cuotas − retenciones e impuestos − costo del producto − publicidad. Precio mínimo sin pérdida y sugerido (margen ${Math.round(THRESHOLDS.TARGET_MARGIN * 100)} %) se calculan con el mayor entre costo de compra y de reposición.</p>
   <div style="margin-top:16px">${helpBox('profit')}</div>`;
+}
+
+/** Lista de todas las publicaciones con su costo por unidad (guarda al salir del campo). Funciona sin SKU. */
+function costList() {
+  const byKey = new Map();
+  for (const r of S.model.rows) { const k = costKey(r.it); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(r); }
+  const groups = [...byKey.entries()].sort((a, b) => (a[1][0].cost?.purchase != null) - (b[1][0].cost?.purchase != null) || (b[1][0].it.sales90 || 0) - (a[1][0].it.sales90 || 0));
+  const missing = groups.filter(([, rs]) => rs[0].cost?.purchase == null).length;
+  return `<section class="card cost-list" id="cost-list">
+    <h3 style="margin-top:0">${I.money} Costo por unidad de cada publicación</h3>
+    <p class="small cost-left" id="cost-left" role="status">${missing ? `<b>Te faltan cargar ${missing} costo${missing === 1 ? '' : 's'}.</b>` : `<b>${I.check} Tenés todos los costos cargados.</b>`} Se guarda solo cuando salís del campo. No hace falta SKU.</p>
+    <ul class="cl">${groups.map(([k, rs]) => { const r = rs[0]; return `<li class="cl-row">
+      <span class="cl-ph">${r.it.thumbnail ? `<img src="${esc(r.it.thumbnail)}" alt="" loading="lazy">` : I.tag}</span>
+      <span class="cl-t">${itemLink(r.it.id, r.it.title)}<span class="tiny muted">${fmtMoney(r.it.price)}${rs.length > 1 ? ` · mismo SKU que ${rs.length - 1} publicación${rs.length > 2 ? 'es' : ''} más` : ''}</span></span>
+      <span class="cl-in"><label class="tiny muted" for="cl-${esc(k)}">Costo por unidad</label><input id="cl-${esc(k)}" inputmode="decimal" placeholder="$" data-cl="${esc(k)}" value="${r.cost?.purchase ?? ''}"><span class="cl-ok tiny" aria-live="polite"></span></span>
+    </li>`; }).join('')}</ul>
+  </section>`;
+}
+
+let costReload = null;
+async function saveOneCost(inp) {
+  const k = inp.dataset.cl;
+  const r = S.model.rows.find((x) => costKey(x.it) === k);
+  const prev = r?.cost?.purchase ?? null;
+  const v = parseNum(inp.value);
+  const ok = inp.parentElement.querySelector('.cl-ok');
+  if (Number.isNaN(v)) { ok.textContent = 'Poné un número'; ok.className = 'cl-ok tiny neg'; return; }
+  if (v === prev || (v == null && prev == null)) return;
+  ok.textContent = 'Guardando…'; ok.className = 'cl-ok tiny muted';
+  const replacement = r?.cost?.replacement ?? null;
+  try {
+    if (DEMO) { if (v == null && replacement == null) delete S.demoData.costs[k]; else S.demoData.costs[k] = { purchase: v, replacement }; }
+    else await api('/api/profit', { method: 'POST', body: { type: 'costs', costs: [{ sku: k, purchase: v, replacement }] } });
+    for (const x of S.model.rows) if (costKey(x.it) === k) x.cost = v == null && replacement == null ? null : { purchase: v, replacement };
+    ok.textContent = v == null ? 'Borrado' : 'Guardado'; ok.className = 'cl-ok tiny pos';
+    const missing = new Set(S.model.rows.filter((x) => x.cost?.purchase == null).map((x) => costKey(x.it))).size;
+    document.getElementById('cost-left').innerHTML = `${missing ? `<b>Te faltan cargar ${missing} costo${missing === 1 ? '' : 's'}.</b>` : '<b>Tenés todos los costos cargados.</b>'} Se guarda solo cuando salís del campo. No hace falta SKU.`;
+    // Los números de ganancia se recalculan cuando dejás de cargar (sin perder el campo en el que estás).
+    clearTimeout(costReload);
+    costReload = setTimeout(async function again() {
+      if (document.activeElement?.dataset?.cl) { costReload = setTimeout(again, 2500); return; }
+      const y = window.scrollY;
+      if (DEMO) { S.model = buildModel(S.demoData); S.summary = buildRuleSummary(S.model); render(); } else await loadReal().catch(() => {});
+      window.scrollTo(0, y);
+    }, 2500);
+  } catch (e) { ok.textContent = e.message; ok.className = 'cl-ok tiny neg'; }
 }
 
 // ─────────────────────────────── Alertas ───────────────────────────────────
@@ -1075,6 +1300,7 @@ function bind(route) {
     runConnecting(true);
   });
 
+  if (route === 'campanas' || route === 'publicacion') bindSim();
   if (route === 'campanas') {
     document.getElementById('camp-refresh')?.addEventListener('click', () => { loadCampaigns(true); render(); });
     document.querySelectorAll('.camp-cost').forEach((f) => f.addEventListener('submit', async (e) => {
@@ -1127,6 +1353,10 @@ function bind(route) {
     document.getElementById('tpl')?.addEventListener('click', downloadTemplate);
     document.getElementById('file')?.addEventListener('change', uploadCosts);
     document.getElementById('save-ads')?.addEventListener('click', saveAds);
+    document.querySelectorAll('input[data-cl]').forEach((inp) => {
+      inp.addEventListener('change', () => saveOneCost(inp));
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+    });
   }
   if (route === 'alertas' && (DEMO || S.paid) && (S.unread || []).length) {
     // Se marcan como leídas al abrir la pestaña; en esta visita siguen marcadas como "Nueva".
