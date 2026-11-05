@@ -291,7 +291,7 @@ const ACTIONS = {
   bajo_revision: () => ({ title: 'Revisá lo que pide Mercado Libre', detail: 'Está bajo revisión: completá o corregí lo que te pidan para que vuelva a mostrarse.', impact: 'alto' }),
   calidad_baja: (it) => ({ title: 'Subí la calidad de la publicación', detail: `Puntaje ${it.quality?.score ?? 'sin dato'}/100. Completá las mejoras que marca Mercado Libre: suben la exposición.`, impact: 'alto' }),
   acciones_pendientes: (it) => ({ title: 'Completá las mejoras pendientes de Mercado Libre', detail: (it.quality?.pending_actions || []).slice(0, 3).join(' · ') || 'Revisá la sección de calidad de la publicación.', impact: 'alto' }),
-  titulo_corto: (it) => ({ title: 'Reescribí el título con palabras clave', detail: `Hoy tiene ${(it.title || '').length} caracteres. Usá producto + marca + modelo + atributo clave (hasta 60).`, impact: 'medio' }),
+  titulo_corto: (it) => ({ title: 'Reescribí el título con palabras clave', detail: `Hoy tiene ${(it.title || '').length} caracteres. Sumá producto + marca + modelo + atributo clave.`, impact: 'medio' }),
   publicacion_gratuita: () => ({ title: 'Pasala a Clásica o Premium', detail: 'Las gratuitas casi no aparecen en las búsquedas.', impact: 'alto' }),
   publicacion_clasica: () => ({ title: 'Probá Premium', detail: 'Premium suma exposición y cuotas sin interés. Revisá que el margen lo banque.', impact: 'medio' }),
   sin_full_flex: () => ({ title: 'Sumá Flex o Full', detail: 'La entrega rápida pesa en el ranking y en la decisión de compra.', impact: 'medio' }),
@@ -310,7 +310,12 @@ const ACTIONS = {
   costo_sin_cargar: () => ({ title: 'Cargá el costo del producto', detail: 'Sin costo no podemos decirte si te deja plata.', impact: 'bajo' }),
 };
 
-export function buildRulePlan(it, cls, profit) {
+// Acciones de la ficha que manda la nota de publicación (no los motivos): Premium y envío gratis solo si la nota los recomienda.
+const SCORE_TITLES = { atributos: 'Completá los atributos', fotos: 'Mejorá las fotos', titulo: 'Mejorá el título', descripcion: 'Mejorá la descripción',
+  video: 'Sumá un video', tipo: 'Revisá el tipo de publicación', envio: 'Ofrecé envío gratis', preguntas: 'Respondé las preguntas', conversion: 'Mejorá la conversión' };
+const FICHA_CODES = new Set(['sin_full_flex', 'titulo_corto', 'publicacion_clasica', 'sin_envio_gratis', 'sin_cuotas', 'pocas_fotos', 'preguntas_sin_responder']);
+
+export function buildRulePlan(it, cls, profit, score = null) {
   const season = cls.category !== 'SANA' && cls.category !== 'PIERDE_PLATA' ? seasonInfo(it) : null;
   if (season) {
     return {
@@ -329,18 +334,22 @@ export function buildRulePlan(it, cls, profit) {
       headline: 'Este producto no tiene salida: liquidalo o pausalo.',
       actions: [
         { title: 'Liquidá el stock', detail: 'Bajá el precio hasta recuperar el costo y liberá esa plata para productos que sí rotan.', impact: 'alto' },
-        { title: 'O pausalo y no repongas', detail: `Visitas 30 días: ${it.visits30 ?? 'sin dato'}. Ventas 90 días: ${it.sales90 ?? 0}.${it.competition?.count != null ? ` Competidores: ${it.competition.count}.` : ''}`, impact: 'medio' },
+        { title: 'O pausalo y no repongas', detail: `${it.visits30 != null ? `Visitas 30 días: ${it.visits30}. ` : ''}Ventas 90 días: ${it.sales90 ?? 0}.${it.competition?.count != null ? ` Competidores: ${it.competition.count}.` : ''}`, impact: 'medio' },
       ],
       source: 'reglas',
     };
   }
   const sorted = [...(cls.reasons || [])].sort((a, b) => b.weight - a.weight);
   const actions = [];
+  const fromScore = (score?.improvements || []).filter((x) => !x.suggestion && SCORE_TITLES[x.key]);
   for (const r of sorted) {
+    // Con nota calculada, las mejoras de la ficha salen de la nota (mismos criterios que la pestaña Publicaciones).
+    if (score && FICHA_CODES.has(r.code)) continue;
     const f = ACTIONS[r.code];
     if (f) actions.push(f(it, profit));
     if (actions.length >= 5) break;
   }
+  for (const x of fromScore) if (actions.length < 5) actions.push({ title: SCORE_TITLES[x.key], detail: x.text, impact: x.gain >= 10 ? 'alto' : 'medio' });
   const headline = {
     OPERATIVO: 'Arreglá esto primero: hoy no puede vender.',
     SIN_VISITAS: 'El problema es que casi nadie la ve.',

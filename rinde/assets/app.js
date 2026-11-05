@@ -4,6 +4,8 @@ import { CATEGORIES, GROUPS, THRESHOLDS, waLink, PLAN_PRICE_ARS, EMAIL_ENABLED, 
 import { fmtMoney, fmtPct, conversion, LISTING_LABEL, ALERT_LABELS, competitorRef, priceGap } from '../shared/rules.js';
 import { evaluateAll, summarize, actionsByItem, splitIdle, campaignStateText } from '../shared/campaigns.js';
 import { regenState, planChanged } from '../shared/plans.js';
+import { scoreAllows, conflictOf } from '../shared/plan-guard.js';
+const MIN_VISITS_CONV = 30; // igual que la nota: con menos visitas la conversión no dice nada
 import { getCampaignsDemo } from '../shared/campaigns-demo.js';
 import { buildModel, buildRuleSummary, costKey } from '../shared/model.js';
 
@@ -61,7 +63,6 @@ function catTag(key) {
   return `<span class="tag ${TONE_TAG[c.tone]}">${I[c.icon]} ${esc(c.label)}</span>`;
 }
 const shipLabel = (it) => (it.shipping?.logistic === 'fulfillment' ? 'Full' : it.shipping?.flex ? 'Flex' : 'Normal');
-const sd = (v, f = (x) => x) => (v == null ? '<span class="muted">sin dato</span>' : f(v));
 const ago = (iso) => {
   if (!iso) return '';
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -466,24 +467,25 @@ function itemCard(r) {
   const conv = conversion(it);
   const ref = competitorRef(it);
   const gap = priceGap(it);
-  const reasons = (cls.reasons || []).filter((x) => x.text);
+  const allow = scoreAllows(r.score, { ship: r.ship });
+  const reasons = (cls.reasons || []).filter((x) => x.text && !conflictOf({ title: x.text }, allow));
   return `<details class="item tone-${GROUPS[r.group].tone}" id="it-${esc(it.id)}">
     <summary>
       <div class="i-top"><div class="i-title">${esc(it.title)}</div><span style="display:flex;gap:6px;flex-wrap:wrap">${scoreBadge(r.score)}${catTag(r.group)}</span></div>
-      <div class="i-meta"><span>Precio <b>${fmtMoney(it.price)}</b></span><span>Visitas 30 d <b>${sd(it.visits30, (v) => v.toLocaleString('es-AR'))}</b></span><span>Ventas 30 d <b>${it.sales30 ?? 0}</b></span><span>Conversión <b>${conv == null ? 'sin dato' : fmtPct(conv)}</b></span></div>
+      <div class="i-meta"><span>Precio <b>${fmtMoney(it.price)}</b></span>${it.visits30 != null ? `<span>Visitas 30 d <b>${it.visits30.toLocaleString('es-AR')}</b></span>` : ''}<span>Ventas 30 d <b>${it.sales30 ?? 0}</b></span>${conv != null && (it.visits30 || 0) >= MIN_VISITS_CONV ? `<span>Conversión <b>${fmtPct(conv)}</b></span>` : ''}</div>
       <div class="i-head">${plan.verdict === 'liquidar' ? `<span class="tag tag-bad">${I.x} Sin salida</span> ` : ''}${esc(plan.headline)}</div>
       <span class="i-more">Ver plan de acción ${I.chevron}</span>
     </summary>
     <div class="i-body">
       <div class="facts">
-        ${it.quality?.score != null ? `<div class="fact"><span>Calidad Mercado Libre</span><b>${sd(it.quality.score)}/100</b> ${it.quality.level_wording ? `<span>${esc(it.quality.level_wording)}</span>` : ''}</div>` : ''}
+        ${it.quality?.score != null ? `<div class="fact"><span>Calidad Mercado Libre</span><b>${it.quality.score}/100</b> ${it.quality.level_wording ? `<span>${esc(it.quality.level_wording)}</span>` : ''}</div>` : ''}
         ${ref ? `<div class="fact"><span>Competencia (referencia)</span><b>${fmtMoney(ref)}</b>${gap != null ? `<span>${gap > 0 ? 'estás ' + fmtPct(gap) + ' arriba' : 'estás ' + fmtPct(-gap) + ' abajo'}</span>` : ''}</div>` : ''}
         <div class="fact"><span>Preguntas sin responder</span><b>${it.questions_unanswered ?? 0}</b>${it.oldest_question_hours ? `<span>la más vieja: ${it.oldest_question_hours} h</span>` : ''}</div>
         <div class="fact"><span>Ganancia 30 días</span><b class="${profit.net < 0 ? 'neg' : ''}">${profit.hasCost ? (profit.units ? fmtMoney(profit.net) : 'sin ventas') : '<span class="muted">costo sin cargar</span>'}</b></div>
-        <div class="fact"><span>Tipo / envío</span><b>${esc(LISTING_LABEL[it.listing_type] || it.listing_type || 'sin dato')} · ${shipLabel(it)}</b></div>
-        <div class="fact"><span>Stock</span><b>${sd(it.available_quantity)}</b></div>
+        <div class="fact"><span>${it.listing_type ? 'Tipo / envío' : 'Envío'}</span><b>${it.listing_type ? `${esc(LISTING_LABEL[it.listing_type] || it.listing_type)} · ` : ''}${shipLabel(it)}</b></div>
+        ${it.available_quantity != null ? `<div class="fact"><span>Stock</span><b>${it.available_quantity}</b></div>` : ''}
         <div class="fact"><span>Ventas 90 días</span><b>${it.sales90 ?? 0}</b></div>
-        <div class="fact"><span>Fotos</span><b>${sd(it.pictures_count)}</b></div>
+        ${it.pictures_count != null ? `<div class="fact"><span>Fotos</span><b>${it.pictures_count}</b></div>` : ''}
       </div>
       ${r.score?.improvements?.length ? `<p class="sec-label">Mejoras que más suben la nota (${r.score.score}/100)</p><ul class="reasons">${r.score.improvements.map((x) => `<li>${esc(x.text)} <span class="muted small">(${x.suggestion ? 'sugerencia' : '+' + x.gain})</span></li>`).join('')}</ul>` : ''}
       ${reasons.length ? `<p class="sec-label">Qué detectamos</p><ul class="reasons">${reasons.map((x) => `<li>${esc(x.text)}</li>`).join('')}</ul>` : ''}

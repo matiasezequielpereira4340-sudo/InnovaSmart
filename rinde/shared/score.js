@@ -45,10 +45,11 @@ function titleCheck(title, max) {
   const seen = {}; const repeated = [];
   for (const w of words) { seen[w] = (seen[w] || 0) + 1; if (seen[w] === 2) repeated.push(w); }
   const caps = t.split(/\s+/).filter((w) => w.length > 3 && /[A-ZÁÉÍÓÚÑ]/.test(w) && w === w.toUpperCase() && !/\d/.test(w));
-  // Largo: nunca se penaliza un título que Mercado Libre acepta. Solo si pasa el máximo de la categoría
-  // o si es muy corto (menos de 40 caracteres: le faltan palabras clave).
-  const over = max && len > max;
-  let s = over ? 0.3 : len >= 40 ? 1 : Math.max(0, Math.min(1, (len - 15) / 25));
+  // Largo: nunca se penaliza un título que Mercado Libre acepta. Si la publicación existe con ese título, MeLi lo
+  // aceptó (el "máximo" de la categoría que informa la API puede estar viejo: hay títulos de 80 en categorías "de 60").
+  // Solo se marca si es muy corto (menos de 40 caracteres: le faltan palabras clave).
+  const over = false;
+  let s = len >= 40 ? 1 : Math.max(0, Math.min(1, (len - 15) / 25));
   if (repeated.length) s -= 0.25;
   if (caps.length >= 2) s -= 0.25;
   return { score: clamp(s), len, repeated, caps, over, max };
@@ -95,11 +96,10 @@ export function listingScore(it, ctx = {}) {
   if (it.title) {
     const t = titleCheck(it.title, it.title_max);
     let fix = null;
-    if (t.over) fix = `El título tiene ${t.len} caracteres y la categoría acepta ${t.max}: recortalo para que no se corte.`;
-    else if (t.len < 40) fix = `El título tiene ${t.len} caracteres: sumale producto, marca, modelo y un atributo clave${t.max ? ` (la categoría acepta hasta ${t.max})` : ''}.`;
+    if (t.len < 40) fix = `El título tiene ${t.len} caracteres: sumale producto, marca, modelo y un atributo clave.`;
     else if (t.repeated.length) fix = `Repetís "${t.repeated.slice(0, 2).join('", "')}" en el título: usá ese espacio para otra palabra clave.`;
     else if (t.caps.length >= 2) fix = `Sacá las mayúsculas del título (${t.caps.slice(0, 3).join(', ')}).`;
-    c.titulo = { value: t.score, note: `${t.len} caracteres${t.max ? ` de ${t.max}` : ''}`, fix };
+    c.titulo = { value: t.score, note: `${t.len} caracteres`, fix };
   }
 
   // d) Descripción

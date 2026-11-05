@@ -3,6 +3,7 @@
 import { classify, computeProductProfit, buildRulePlan, lostSalesEstimate, rankProblems, prorate, replacementWarning, buildAlerts, groupOf, seasonInfo, seasonOf, itemHistory, shippingSuggestion } from './rules.js';
 import { CATEGORIES, GROUPS, SEASONS, THRESHOLDS as T } from './config.js';
 import { listingScore, accountConversion } from './score.js';
+import { guardPlan } from './plan-guard.js';
 
 export function costKey(it) {
   return (it.sku && String(it.sku).trim()) || it.id;
@@ -37,10 +38,13 @@ export function buildModel(data) {
     const group = groupOf(it, cls);
     const season = group === 'TEMPORADA' ? seasonInfo(it) : null;
     // De temporada: el plan de reglas manda (la IA podría decir "reponé stock" de un producto de invierno en noviembre).
-    const plan = season ? buildRulePlan(it, cls, profit) : plans[it.id] || buildRulePlan(it, cls, profit);
     const score = listingScore(it, { ...scoreCtx, shipCost: profit.units && profit.fees.shipping > 0 ? profit.fees.shipping / profit.units : null });
     // Sugerencia Full/Flex (solo productos validados). Va al plan y a las mejoras de la nota; no suma plata.
     const ship = shippingSuggestion(it, profit, seller);
+    const rulePlan = buildRulePlan(it, cls, profit, score);
+    // Plan de IA filtrado contra la nota: lo que la nota no recomienda (recortar título, Premium, envío gratis,
+    // Full/Flex sin venta sostenida) se reemplaza por el texto de reglas.
+    const plan = season ? rulePlan : plans[it.id] ? guardPlan(plans[it.id], score, rulePlan, { ship }) : guardPlan(rulePlan, score, rulePlan, { ship });
     let planOut = plan;
     if (ship) {
       score.improvements = [{ text: ship.text, gain: 0, key: ship.kind, suggestion: true }, ...score.improvements].slice(0, 3);
