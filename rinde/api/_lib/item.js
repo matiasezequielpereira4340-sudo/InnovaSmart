@@ -16,6 +16,7 @@ import { feeKey } from '../../shared/campaigns.js';
 import { costKey } from '../../shared/model.js';
 import { accountConversion } from '../../shared/score.js';
 import { sourceOf, titleRule, finalize, ruleSuggestion, SUGGEST_LIMITS } from '../../shared/suggest.js';
+import { scrubSuggestion } from '../../shared/attrs.js';
 
 const DAY = 86400000;
 const ID = /^MLA\d{6,14}$/;
@@ -78,7 +79,7 @@ export async function itemRoute(req, res, u) {
       db.select('rinde_suggestions', { user_id: u.id, item_id: id }, { columns: 'content,source,variant,created_at', order: 'created_at.desc', limit: 1 }),
       db.select('rinde_suggestions', { user_id: u.id }, { columns: 'item_id,created_at', order: 'created_at.asc', limit: 500 }),
     ]);
-    return json(res, 200, { sales, suggestion: saved[0] ? { ...saved[0].content, source: saved[0].source, variant: saved[0].variant, created_at: saved[0].created_at, cached: true } : null, usage: usageOf(mine, { paid, itemId: id }) });
+    return json(res, 200, { sales, suggestion: saved[0] ? { ...scrubSuggestion(saved[0].content), source: saved[0].source, variant: saved[0].variant, created_at: saved[0].created_at, cached: true } : null, usage: usageOf(mine, { paid, itemId: id }) });
   }
 
   method(req, 'POST');
@@ -99,7 +100,7 @@ export async function itemRoute(req, res, u) {
   const prev = mine.filter((r) => r.item_id === id).at(-1);
 
   // Mismos datos y no pidió otra: se devuelve la guardada (no se gasta IA ni cupo).
-  if (!body.again && prev && prev.input_hash === hash) return json(res, 200, { suggestion: { ...prev.content, source: prev.source, variant: prev.variant, created_at: prev.created_at, cached: true }, usage });
+  if (!body.again && prev && prev.input_hash === hash) return json(res, 200, { suggestion: { ...scrubSuggestion(prev.content), source: prev.source, variant: prev.variant, created_at: prev.created_at, cached: true }, usage });
   if (!usage.allowed) {
     throw new AppError(402, paid ? `Llegaste al máximo de ${SUGGEST_LIMITS.PAID_PER_DAY} sugerencias por día. Mañana podés generar más.` : 'Disponible en Plan Rinde', paid ? 'limit' : 'plan_required');
   }

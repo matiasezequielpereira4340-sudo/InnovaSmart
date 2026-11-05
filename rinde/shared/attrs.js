@@ -43,3 +43,23 @@ export function cleanAttrs(attrs, cat = null) {
   const removedRec = (attrs.rec_missing || []).length - rec_missing.length;
   return { req_total: Math.max(0, (attrs.req_total || 0) - removedReq), rec_total: Math.max(0, (attrs.rec_total || 0) - removedRec), req_missing, rec_missing, cleaned: attrs.cleaned || 'nombre' };
 }
+
+// ── Textos ya guardados (planes de IA, resúmenes, sugerencias) que mencionen atributos fiscales o internos ──
+const INTERNAL_IN_TEXT = /\b(IVA|impuestos? internos?|datos de facturaci[oó]n)\b/i;
+const ATTR_CONTEXT = /atribut|carg[aá]|complet|ficha|faltan?/i;
+/** true si el texto habla de atributos y nombra uno fiscal/interno ("Cargá …, IVA, Impuesto interno"). */
+export function mentionsInternalAttr(text) {
+  const t = String(text || '');
+  return INTERNAL_IN_TEXT.test(t) && ATTR_CONTEXT.test(t);
+}
+/** Sugerencia guardada: fuera los atributos fiscales/internos de la lista y de la descripción. */
+export function scrubSuggestion(s) {
+  if (!s) return s;
+  const out = { ...s };
+  if (Array.isArray(out.attributes)) out.attributes = out.attributes.filter((a) => !a.fiscal && !isInternalName(a.name));
+  if (out.description?.text) {
+    const text = out.description.text.split('\n').filter((l) => !/^\s*-?\s*(IVA|impuestos? internos?)\s*:/i.test(l)).join('\n');
+    out.description = { ...out.description, text, length: text.length };
+  }
+  return out;
+}

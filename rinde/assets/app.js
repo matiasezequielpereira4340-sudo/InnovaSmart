@@ -12,6 +12,7 @@ import { getCampaignsDemo } from '../shared/campaigns-demo.js';
 import { buildModel, buildRuleSummary, costKey } from '../shared/model.js';
 import { saleRows, itemStates, searchItems } from '../shared/item-detail.js';
 import { sourceOf, ruleSuggestion, NOTE_FIXED, SUGGEST_LIMITS } from '../shared/suggest.js';
+import { scrubSuggestion } from '../shared/attrs.js';
 import { SEASONS } from '../shared/config.js';
 
 const DEMO = location.pathname.startsWith('/demo') || new URLSearchParams(location.search).has('demo');
@@ -708,7 +709,7 @@ function moneyBlock(r, x) {
 function suggestionBlock(r, x) {
   const id = r.it.id;
   const st = S.sugg[id] || {};
-  const data = st.data || x.suggestion || null;
+  const data = scrubSuggestion(st.data || x.suggestion || null); // sin atributos fiscales/internos (también en las ya guardadas)
   const usage = st.usage || x.usage || (DEMO ? demoUsage() : null);
   const locked = usage && !usage.allowed && !data;
   const lockMsg = usage && !usage.paid ? (usage.reason === 'otra_publicacion' ? 'Ya usaste la prueba gratis en otra publicación.' : usage.reason === 'agotado' ? 'Ya usaste las sugerencias de prueba.' : '') : '';

@@ -3,6 +3,8 @@
 // (recortar un título que MeLi acepta, pasar a Premium, ofrecer envío gratis), esa acción se reemplaza
 // por una del plan de reglas. Código puro para poder probarlo.
 
+import { mentionsInternalAttr } from './attrs.js';
+
 const TRIM_TITLE = (t) => /(recort|acort|achic|reduc|sac[aá])\w*.{0,30}t[ií]tulo|t[ií]tulo.{0,40}(recort|acort|m[aá]s corto|achic|reduc|hasta 60|60 caracteres)/i.test(t);
 const FULL_FLEX = /\b(full|flex)\b/i;
 const PREMIUM = /premium/i;
@@ -26,6 +28,8 @@ export function scoreAllows(score, { ship = null } = {}) {
 export function conflictOf(action, allow) {
   const t = `${action?.title || ''} ${action?.detail || ''}`;
   if (!allow.trim && TRIM_TITLE(t)) return 'recortar título';
+  // Planes guardados antes del filtro: "Cargá …, IVA, Impuesto interno" (atributos que el comprador no ve).
+  if (mentionsInternalAttr(t)) return 'atributo fiscal o interno';
   if (!allow.premium && PREMIUM.test(t)) return 'pasar a Premium';
   if (!allow.fullFlex && FULL_FLEX.test(t)) return 'Full o Flex';
   if (!allow.freeShip && FREE_SHIP.test(t) && !/ya (ten[eé]s|ofrec)/i.test(t)) return 'envío gratis';

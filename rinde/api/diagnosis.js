@@ -11,6 +11,7 @@ import { LIMITS } from '../shared/config.js';
 import { db } from './_lib/db.js';
 import { sha256 } from './_lib/crypto.js';
 import { syncAlerts, unreadAlerts } from './_lib/alerts.js';
+import { mentionsInternalAttr } from '../shared/attrs.js';
 
 export default handler(async (req, res) => {
   const u = await currentUser(req);
@@ -24,10 +25,10 @@ export default handler(async (req, res) => {
     // El titular y los montos siempre se recalculan con las reglas (corrige diagnósticos viejos con "pierde").
     const rule = buildRuleSummary(model);
     const stored = diag?.summary;
-    const fixFor = (label) => { const f = (stored?.problems || []).find((x) => x.label === label)?.fix; return f && !claimsFakeLoss(f) ? f : null; };
+    const fixFor = (label) => { const f = (stored?.problems || []).find((x) => x.label === label)?.fix; return f && !claimsFakeLoss(f) && !mentionsInternalAttr(f) ? f : null; };
     const sameTop = stored?.problems?.[0]?.label && stored.problems[0].label === rule.problems[0]?.label;
     const summary = stored
-      ? { ...stored, headline: rule.headline, revenueNote: rule.revenueNote, explain: rule.explain, abandoned: rule.abandoned, seasonal: rule.seasonal, tips: rule.tips, selling: rule.selling, startPlan: rule.startPlan, problems: rule.problems.map((p) => ({ ...p, fix: fixFor(p.label) || p.fix })), first: rule.startPlan ? rule.first : sameTop && stored.first && !claimsFakeLoss(stored.first) ? stored.first : rule.first }
+      ? { ...stored, headline: rule.headline, revenueNote: rule.revenueNote, explain: rule.explain, abandoned: rule.abandoned, seasonal: rule.seasonal, tips: rule.tips, selling: rule.selling, startPlan: rule.startPlan, problems: rule.problems.map((p) => ({ ...p, fix: fixFor(p.label) || p.fix })), first: rule.startPlan ? rule.first : sameTop && stored.first && !claimsFakeLoss(stored.first) && !mentionsInternalAttr(stored.first) ? stored.first : rule.first }
       : rule;
     for (const r of model.rows) if (r.plan?.source === 'ia' && claimsFakeLoss(r.plan.headline, r.profit)) r.plan = { ...r.plan, headline: buildRulePlanHeadline(r) };
     const sales90 = model.rows.reduce((t, r) => t + (r.it.sales90 || 0), 0);
