@@ -10,6 +10,7 @@ export const ATTR_HINT = 'Completá con el dato real del producto';
 export const TITLE_LOCKED_SALES = 'Mercado Libre no permite cambiar el título de una publicación con ventas. Si querés otro título, tenés que crear una publicación nueva.';
 export const TITLE_LOCKED_CATALOG = 'Esta publicación está en el catálogo de Mercado Libre: el título lo pone el catálogo y no se puede cambiar desde la publicación.';
 export const SUGGEST_LIMITS = { PAID_PER_DAY: 30, FREE_ITEMS: 1, FREE_GENERATIONS: 3 };
+import { isInternalAttr, cleanAttrs } from './attrs.js';
 export const DEFAULT_TITLE_MAX = 60; // si Mercado Libre no informa el máximo de la categoría
 
 const STOP = new Set(['de', 'del', 'para', 'con', 'sin', 'y', 'e', 'o', 'u', 'el', 'la', 'los', 'las', 'en', 'x', 'por', 'a', 'al', 'un', 'una', 'tipo', 'tu', 'su']);
@@ -36,8 +37,8 @@ export function plain(s) {
 export function sourceOf({ item = {}, attributes = [], description = '', questions = [], category = null } = {}) {
   const attrs = (attributes || [])
     .map((a) => ({ id: a.id || null, name: a.name || a.id || '', value: String(a.value ?? a.value_name ?? '').trim() }))
-    .filter((a) => a.value && !SKIP_ATTR.has(a.id) && !FISCAL.test(a.name));
-  const miss = item.attrs || {};
+    .filter((a) => a.value && !SKIP_ATTR.has(a.id) && !FISCAL.test(a.name) && !isInternalAttr(a));
+  const miss = cleanAttrs(item.attrs) || {};
   return {
     id: item.id,
     title: String(item.title || '').trim(),
@@ -177,10 +178,10 @@ export function ruleDescription(src) {
 
 /** Atributos que faltan según la categoría: nunca se completan con IA. */
 export function missingAttributes(src) {
-  const req = src.missing.required.map((name) => ({ name, required: true }));
+  // Fiscales e internos (IVA, impuesto interno…) no se listan: no los ve el comprador.
+  const req = src.missing.required.filter((n) => !FISCAL.test(n)).map((name) => ({ name, required: true }));
   const rec = src.missing.recommended.filter((n) => !FISCAL.test(n)).map((name) => ({ name, required: false }));
-  const fiscal = src.missing.recommended.filter((n) => FISCAL.test(n)).map((name) => ({ name, required: false, fiscal: true }));
-  return [...req, ...rec, ...fiscal].map((a) => ({ ...a, hint: a.fiscal ? 'Dato fiscal: completalo con tu contador' : ATTR_HINT }));
+  return [...req, ...rec].map((a) => ({ ...a, hint: ATTR_HINT }));
 }
 
 /** Arma la sugerencia completa sin IA (demo, respaldo si la IA no está o falla). */

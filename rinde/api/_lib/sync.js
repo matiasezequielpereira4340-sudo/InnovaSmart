@@ -5,6 +5,7 @@ import * as meli from './meli.js';
 import { LIMITS, FEATURES } from '../../shared/config.js';
 import { parseSettlement } from '../../shared/validation.js';
 import { markNeedsReconnect } from './audit.js';
+import { cleanAttrs } from '../../shared/attrs.js';
 
 const now = () => new Date().toISOString();
 const DAY = 86400000;
@@ -284,6 +285,11 @@ export async function loadAccount(userId) {
       });
     }
   }
+  // Atributos guardados antes del filtro de fiscales/internos: se recalculan con la lista de la categoría (caché).
+  const catIds = [...new Set(items.map((r) => r.data?.category_id).filter(Boolean))];
+  const catRows = catIds.length ? await db.select('rinde_settings', { key: catIds.map((id) => `cat_attrs:${id}`) }).catch(() => []) : [];
+  const catMap = Object.fromEntries(catRows.map((r) => [r.key.slice(10), r.value]));
+  for (const r of items) if (r.data?.attrs && r.data.attrs.cleaned !== 'categoria') r.data.attrs = cleanAttrs(r.data.attrs, catMap[r.data.category_id]);
   const costMap = {};
   for (const c of costs) costMap[c.sku] = { purchase: c.purchase_cost, replacement: c.replacement_cost };
   const s = user?.settings || {};

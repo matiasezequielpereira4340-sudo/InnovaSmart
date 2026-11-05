@@ -194,7 +194,8 @@ export async function getItems(t, ids) {
  * en rinde_settings (lo comparten todos los usuarios) para no repetir pedidos a MeLi.
  */
 const CAT_TTL = 7 * 86400000;
-const SKIP_ATTRS = new Set(['SELLER_SKU', 'ITEM_CONDITION', 'GTIN', 'EMPTY_GTIN_REASON']);
+// Fiscales, internos, ocultos, de solo lectura y código de barras no exigido: no cuentan (shared/attrs.js).
+import { isInternalAttr } from '../../shared/attrs.js';
 export async function getCategoryAttrs(t, catIds) {
   const ids = [...new Set(catIds.filter(Boolean))];
   const out = {};
@@ -209,7 +210,7 @@ export async function getCategoryAttrs(t, catIds) {
     const info = await meliGet(t, `/categories/${id}`, { allow404: true }).catch(() => null);
     const maxTitle = Number(info?.settings?.max_title_length) || null;
     const pick = (a) => ({ id: a.id, name: a.name });
-    const usable = d.filter((a) => !SKIP_ATTRS.has(a.id) && !a.tags?.hidden && !a.tags?.read_only && !a.tags?.fixed && !a.tags?.others);
+    const usable = d.filter((a) => !isInternalAttr(a));
     const required = usable.filter((a) => a.tags?.required || a.tags?.catalog_required).map(pick);
     const reqIds = new Set(required.map((a) => a.id));
     const recommended = usable.filter((a) => !reqIds.has(a.id) && a.relevance === 1).map(pick);
@@ -227,11 +228,15 @@ export function missingAttrs(b, cat) {
   const ok = (a) => a && (a.value_name || a.value_id || (Array.isArray(a.values) && a.values.some((v) => v.name || v.id)));
   for (const a of b.attributes || []) if (ok(a)) filled.add(a.id);
   for (const v of b.variations || []) for (const a of [...(v.attribute_combinations || []), ...(v.attributes || [])]) if (ok(a)) filled.add(a.id);
+  // La caché de categorías puede ser anterior al filtro: se vuelve a filtrar acá.
+  const req = cat.required.filter((a) => !isInternalAttr(a));
+  const rec = cat.recommended.filter((a) => !isInternalAttr(a));
   return {
-    req_total: cat.required.length,
-    rec_total: cat.recommended.length,
-    req_missing: cat.required.filter((a) => !filled.has(a.id)).map((a) => a.name),
-    rec_missing: cat.recommended.filter((a) => !filled.has(a.id)).map((a) => a.name),
+    req_total: req.length,
+    rec_total: rec.length,
+    req_missing: req.filter((a) => !filled.has(a.id)).map((a) => a.name),
+    rec_missing: rec.filter((a) => !filled.has(a.id)).map((a) => a.name),
+    cleaned: 'categoria',
   };
 }
 

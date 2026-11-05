@@ -2,6 +2,7 @@
 // Regla: ninguna mejora puede empeorar el margen sin decir cuánto cuesta. Premium y envío gratis
 // solo cuentan cuando tienen sentido (precio alto / envío barato) y siempre con el costo a la vista.
 import { THRESHOLDS as T } from './config.js';
+import { cleanAttrs } from './attrs.js';
 // Cada criterio tiene un peso. Si un dato no se pudo leer, ese criterio no cuenta y su peso se reparte entre los demás.
 // Nunca se muestra "sin dato": se explica con lo que hay.
 
@@ -64,7 +65,8 @@ export function listingScore(it, ctx = {}) {
   const c = {}; // key -> { value 0..1, fix: texto o null, note }
 
   // a) Atributos
-  const a = it.attrs;
+  // Solo atributos que ve el comprador o afectan la búsqueda (sin IVA, impuesto interno ni datos internos).
+  const a = cleanAttrs(it.attrs);
   if (a && (a.req_total || a.rec_total)) {
     const totalW = (a.req_total || 0) * 2 + (a.rec_total || 0);
     const missW = (a.req_missing?.length || 0) * 2 + (a.rec_missing?.length || 0);
